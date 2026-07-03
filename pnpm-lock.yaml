@@ -20,7 +20,7 @@ importers:
 
   packages/cli:
     dependencies:
-      '@ts-semver-checks/core':
+      ts-semver-checks-core:
         specifier: workspace:^
         version: link:../core
       typescript:

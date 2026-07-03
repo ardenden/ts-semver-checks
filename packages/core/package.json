@@ -1,5 +1,5 @@
 {
-  "name": "@ts-semver-checks/core",
+  "name": "ts-semver-checks-core",
   "version": "0.2.0",
   "description": "Core library: extract, diff and classify the exported type surface of a TypeScript package.",
   "keywords": ["semver", "typescript", "api", "breaking-change", "types", "diff"],

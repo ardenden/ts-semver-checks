@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractSurface } from "@ts-semver-checks/core";
+import { extractSurface } from "ts-semver-checks-core";
 import { fetchBaselinePackage } from "../src/baseline.js";
 import { resolvePackage } from "../src/resolve.js";
 

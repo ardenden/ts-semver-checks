@@ -16,7 +16,7 @@ growing fixture corpus that doubles as the spec.
 
 | Package | What it is |
 | --- | --- |
-| [`@ts-semver-checks/core`](packages/core) | Pure library: `extractSurface`, `diffSurfaces`, `classify`, `checkSurfaces`, `renderReport`. |
+| [`ts-semver-checks-core`](packages/core) | Pure library: `extractSurface`, `diffSurfaces`, `classify`, `checkSurfaces`, `renderReport`. |
 | [`ts-semver-checks`](packages/cli) | Thin CLI wrapper: arg parsing, report rendering, CI exit codes. |
 
 ## CLI usage
@@ -58,7 +58,7 @@ error, `3` baseline fetch/resolution error.
 ## Library usage
 
 ```ts
-import { extractSurface, checkSurfaces } from "@ts-semver-checks/core";
+import { extractSurface, checkSurfaces } from "ts-semver-checks-core";
 
 const before = extractSurface({ entryPoint: "baseline/index.d.ts" });
 const after = extractSurface({ entryPoint: "src/index.ts" });

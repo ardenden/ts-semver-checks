@@ -1,4 +1,4 @@
-import type { SemverLevel } from "@ts-semver-checks/core";
+import type { SemverLevel } from "ts-semver-checks-core";
 
 export interface ParsedArgs {
   beforeEntry?: string;

@@ -1,10 +1,10 @@
-# @ts-semver-checks/core
+# ts-semver-checks-core
 
 The pure library behind [`ts-semver-checks`](https://www.npmjs.com/package/ts-semver-checks):
 extract, diff, and classify the exported type surface of a TypeScript package.
 
 ```ts
-import { extractSurface, checkSurfaces } from "@ts-semver-checks/core";
+import { extractSurface, checkSurfaces } from "ts-semver-checks-core";
 
 const before = extractSurface({ entryPoint: "baseline/index.d.ts" });
 const after = extractSurface({ entryPoint: "src/index.ts" });

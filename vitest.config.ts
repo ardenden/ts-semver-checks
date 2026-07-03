@@ -8,7 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       // Run tests against TypeScript source, no build step required.
-      "@ts-semver-checks/core": path.join(here, "packages/core/src/index.ts"),
+      "ts-semver-checks-core": path.join(here, "packages/core/src/index.ts"),
     },
   },
   test: {

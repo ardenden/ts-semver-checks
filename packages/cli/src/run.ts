@@ -7,7 +7,7 @@ import {
   type ApiSurface,
   type CheckResult,
   type SemverLevel,
-} from "@ts-semver-checks/core";
+} from "ts-semver-checks-core";
 import { ArgError, HELP_TEXT, parseArgs, type ParsedArgs } from "./args.js";
 import { resolvePackage, ResolveError } from "./resolve.js";
 import { BaselineError, fetchBaselinePackage } from "./baseline.js";
