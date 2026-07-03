@@ -1,7 +1,17 @@
 {
   "name": "ts-semver-checks",
-  "version": "0.1.0",
-  "description": "CLI: fail your build when a PR is a breaking change but the version bump says otherwise.",
+  "version": "0.2.0",
+  "description": "Fail your build when a PR breaks your TypeScript package's public API but the version bump says otherwise.",
+  "keywords": ["semver", "typescript", "api", "breaking-change", "types", "ci", "cli"],
+  "homepage": "https://github.com/ardenden/ts-semver-checks#readme",
+  "bugs": "https://github.com/ardenden/ts-semver-checks/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ardenden/ts-semver-checks.git",
+    "directory": "packages/cli"
+  },
+  "author": "ardenden",
+  "license": "MIT",
   "type": "module",
   "bin": {
     "ts-semver-checks": "./dist/cli.js"
@@ -13,15 +23,21 @@
     }
   },
   "files": ["dist"],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@ts-semver-checks/core": "workspace:*"
+    "@ts-semver-checks/core": "workspace:^"
   },
   "peerDependencies": {
     "typescript": ">=5.0.0"
   },
-  "license": "MIT"
+  "publishConfig": {
+    "access": "public"
+  }
 }

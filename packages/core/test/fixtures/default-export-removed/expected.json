@@ -1,0 +1,1 @@
+{ "level": "major", "codes": ["export.removed"], "description": "Removing the default export is breaking." }

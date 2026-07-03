@@ -79,6 +79,18 @@ export function extractSurface(options: ExtractOptions): ApiSurface {
     }
   }
 
+  // CommonJS `export = X` (TypeScript export-assignment) is not returned by
+  // getExportsOfModule; it lives on the module symbol under "export=". This is
+  // how packages like `mri` expose their main function.
+  const exportEquals = moduleSymbol.exports?.get("export=" as ts.__String);
+  if (exportEquals) {
+    const resolved = resolveAlias(exportEquals, checker);
+    const serialized = serializeSymbol("export=", resolved, checker);
+    if (serialized) {
+      exports["export="] = serialized;
+    }
+  }
+
   return { entryPoint: options.entryPoint, exports };
 }
 
