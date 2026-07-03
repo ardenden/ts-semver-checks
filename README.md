@@ -126,21 +126,35 @@ const { level, findings } = checkSurfaces(before, after);
 Currently detected (see [`packages/core/src/diff.ts`](packages/core/src/diff.ts)):
 
 - **major:** removed export, changed export kind, removed/added-required parameter,
-  parameter type change, return type change, optional→required, removed/changed
+  parameter type **narrowed**, return type **widened**, optional→required, removed/changed
   interface member, new required interface member/method, removed/changed enum member,
   type-alias/generic-constraint change, class made abstract, removed constructor.
-- **minor:** new export, new optional parameter/property, required→optional, new class
-  member, new enum member, added overload, type parameter added with a default.
-- **patch:** no surface change.
+- **minor:** new export, new optional parameter/property, required→optional, parameter
+  type **widened**, return type **narrowed**, new class member, new enum member, added
+  overload, type parameter added with a default.
+- **patch:** no surface change (including type changes that are actually equivalent, e.g.
+  `string[]` ↔ `Array<string>`).
 
-### Known limitation: assignability
+### Assignability
 
-Types are compared as **normalized strings**, not via the compiler's assignability
-relation. Across two independent builds we can't always tell a *widening* (minor) from a
-*narrowing* (major), so any ambiguous type change is classified **major** — a CI gate
-should err toward safety. Structurally provable cases (adding an optional param,
-relaxing `required`→`optional`) are classified precisely. Assignability-aware comparison
-(building a combined program from both `.d.ts` snapshots) is the planned next step.
+When both entry points are available (baseline mode and two-file mode), type changes on
+**function parameters and return types** are classified by the compiler's *assignability*
+relation rather than by string comparison:
+
+- Parameters are contravariant — a **widened** parameter still accepts every previous
+  input, so it's **minor**; a **narrowed** one is **major**.
+- Return types are covariant — a **narrowed** return is a subtype of the old one, so it's
+  **minor**; a **widened** one is **major**.
+- Types that are mutually assignable are treated as **equivalent** and produce no finding.
+
+This is done by building a single program containing both the old and new entry points,
+so one checker can compare types across the two versions.
+
+**Still conservative:** interface/class property types, type aliases, and generic
+constraints are compared structurally (as strings) and, when a direction can't be proven,
+classified **major** — a CI gate should err toward safety. Extending assignability to
+those is future work. The pure string path (`checkSurfaces` over serialized surfaces) is
+also always conservative, since it has no live types to compare.
 
 ## Development
 
@@ -161,7 +175,8 @@ means adding a fixture. The harness discovers them automatically.
 
 - ~~npm baseline fetch (`--baseline <version>`, default latest published)~~ ✅ done.
 - ~~CommonJS `export =` extraction~~ ✅ done.
-- Assignability-based widening/narrowing detection.
+- ~~Assignability-based widening/narrowing detection (parameters + return types)~~ ✅ done.
+- Extend assignability to property types, type aliases, and generic constraints.
 - git-ref baseline checkout (`--baseline <git-ref>`).
 - Multi-entry-point / `package.json` `exports` map traversal (multiple subpaths).
 - Monorepo multi-package orchestration.

@@ -1,0 +1,1 @@
+{ "level": "major", "codes": ["param.typeChanged"], "description": "Narrowing a parameter rejects previously-valid inputs (breaking)." }

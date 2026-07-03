@@ -23,8 +23,10 @@ export { diffSurfaces } from "./diff.js";
 export { classify, sortFindings } from "./findings.js";
 export type { Finding } from "./findings.js";
 
-export { checkSurfaces } from "./check.js";
-export type { CheckResult } from "./check.js";
+export { checkSurfaces, checkEntries } from "./check.js";
+export type { CheckResult, CheckEntriesOptions } from "./check.js";
+
+export { refineFindings } from "./assignability.js";
 
 export { renderReport } from "./report.js";
 export type { RenderOptions } from "./report.js";

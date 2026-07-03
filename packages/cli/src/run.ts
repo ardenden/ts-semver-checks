@@ -1,10 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import {
-  checkSurfaces,
-  extractSurface,
+  checkEntries,
   renderReport,
-  type ApiSurface,
   type CheckResult,
   type SemverLevel,
 } from "ts-semver-checks-core";
@@ -70,9 +68,7 @@ function runDirect(args: ParsedArgs, io: RunIO): number {
     }
   }
 
-  const before = extractSurface({ entryPoint: args.beforeEntry });
-  const after = extractSurface({ entryPoint: args.afterEntry });
-  return report(checkSurfaces(before, after), args, io);
+  return report(checkEntries(args.beforeEntry, args.afterEntry), args, io);
 }
 
 // ---------------------------------------------------------------------------
@@ -110,10 +106,9 @@ function runBaseline(args: ParsedArgs, io: RunIO): number {
   }
 
   try {
-    let beforeSurface: ApiSurface;
+    let baselineEntry: string;
     try {
-      const baselinePkg = resolvePackage(fetched.dir);
-      beforeSurface = extractSurface({ entryPoint: baselinePkg.typesEntry });
+      baselineEntry = resolvePackage(fetched.dir).typesEntry;
     } catch (err) {
       if (err instanceof ResolveError) {
         io.stderr(`Could not read the published baseline: ${err.message}\n`);
@@ -122,8 +117,7 @@ function runBaseline(args: ParsedArgs, io: RunIO): number {
       throw err;
     }
 
-    const afterSurface = extractSurface({ entryPoint: local.typesEntry });
-    return report(checkSurfaces(beforeSurface, afterSurface), args, io);
+    return report(checkEntries(baselineEntry, local.typesEntry), args, io);
   } finally {
     fetched.cleanup();
   }

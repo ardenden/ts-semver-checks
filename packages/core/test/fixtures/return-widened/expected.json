@@ -1,0 +1,1 @@
+{ "level": "major", "codes": ["returnType.changed"], "description": "Widening a return type can break consumers." }

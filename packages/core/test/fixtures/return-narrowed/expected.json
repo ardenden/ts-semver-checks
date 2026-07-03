@@ -1,0 +1,1 @@
+{ "level": "minor", "codes": ["returnType.narrowed"], "description": "Narrowing a return type is safe for consumers." }

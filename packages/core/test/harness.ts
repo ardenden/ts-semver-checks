@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkSurfaces, extractSurface, type SemverLevel } from "../src/index.js";
+import { checkEntries, type SemverLevel } from "../src/index.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const FIXTURES_DIR = path.join(here, "fixtures");
@@ -52,9 +52,7 @@ function resolveEntry(dir: string, base: string): string | undefined {
   return undefined;
 }
 
-/** Run a single fixture end-to-end: extract both surfaces and check them. */
+/** Run a single fixture end-to-end through the live-type (assignability) path. */
 export function runFixture(fixture: Fixture) {
-  const before = extractSurface({ entryPoint: fixture.beforeEntry });
-  const after = extractSurface({ entryPoint: fixture.afterEntry });
-  return checkSurfaces(before, after);
+  return checkEntries(fixture.beforeEntry, fixture.afterEntry);
 }
