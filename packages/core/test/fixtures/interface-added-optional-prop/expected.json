@@ -1,0 +1,1 @@
+{ "level": "minor", "codes": ["property.addedOptional"], "description": "New optional interface property is additive." }

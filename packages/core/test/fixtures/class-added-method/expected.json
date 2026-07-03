@@ -1,0 +1,1 @@
+{ "level": "minor", "codes": ["method.added"], "description": "Adding a public method to a class is additive." }

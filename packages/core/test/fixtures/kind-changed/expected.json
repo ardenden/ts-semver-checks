@@ -1,0 +1,1 @@
+{ "level": "major", "codes": ["export.kindChanged"], "description": "Changing a symbol's kind is breaking." }

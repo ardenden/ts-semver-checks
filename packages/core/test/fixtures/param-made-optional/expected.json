@@ -1,0 +1,1 @@
+{ "level": "minor", "codes": ["param.madeOptional"], "description": "Relaxing required to optional is additive." }

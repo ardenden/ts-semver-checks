@@ -1,0 +1,5 @@
+{
+  "level": "patch",
+  "codes": [],
+  "description": "Function body changes only; the type surface is identical."
+}

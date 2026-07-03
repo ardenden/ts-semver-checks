@@ -1,0 +1,1 @@
+{ "level": "major", "codes": ["property.addedRequired"], "description": "New required interface property breaks implementers." }

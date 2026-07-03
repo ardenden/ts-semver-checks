@@ -1,0 +1,27 @@
+{
+  "name": "ts-semver-checks",
+  "version": "0.1.0",
+  "description": "CLI: fail your build when a PR is a breaking change but the version bump says otherwise.",
+  "type": "module",
+  "bin": {
+    "ts-semver-checks": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@ts-semver-checks/core": "workspace:*"
+  },
+  "peerDependencies": {
+    "typescript": ">=5.0.0"
+  },
+  "license": "MIT"
+}

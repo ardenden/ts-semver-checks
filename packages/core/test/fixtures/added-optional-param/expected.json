@@ -1,0 +1,1 @@
+{ "level": "minor", "codes": ["param.addedOptional"], "description": "New optional parameter is additive." }

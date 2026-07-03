@@ -1,0 +1,1 @@
+{ "level": "minor", "codes": ["enum.memberAdded"], "description": "Adding an enum member is additive." }

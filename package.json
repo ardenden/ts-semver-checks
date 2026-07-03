@@ -1,0 +1,23 @@
+{
+  "name": "ts-semver-checks-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Semantic semver checker for TypeScript packages — diffs the exported type surface and classifies changes as major/minor/patch.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@11.9.0",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "pnpm -r exec rimraf dist"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

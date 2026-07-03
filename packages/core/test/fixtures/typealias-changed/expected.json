@@ -1,0 +1,1 @@
+{ "level": "major", "codes": ["typeAlias.changed"], "description": "Type alias definition change is conservatively breaking." }
