@@ -7,6 +7,21 @@ classify the change as **major / minor / patch** — the TypeScript equivalent o
 > Run it in CI and it fails the build when a PR is a breaking change but the version
 > bump says otherwise.
 
+## Install
+
+Most people want **just the CLI** — it's the whole tool:
+
+```bash
+npm install --save-dev ts-semver-checks
+# or run without installing:
+npx ts-semver-checks --baseline --expect minor
+```
+
+You do **not** need to install anything else. The CLI depends on the
+[`ts-semver-checks-core`](https://www.npmjs.com/package/ts-semver-checks-core) library and
+pulls it in automatically. Only install `ts-semver-checks-core` directly if you're
+building your own tooling on top of the analysis engine (see [Library usage](#library-usage)).
+
 ## Status
 
 Early MVP. It proves the full pipeline end-to-end — extract → diff → classify — over a
@@ -14,10 +29,10 @@ growing fixture corpus that doubles as the spec.
 
 ## Packages
 
-| Package | What it is |
-| --- | --- |
-| [`ts-semver-checks-core`](packages/core) | Pure library: `extractSurface`, `diffSurfaces`, `classify`, `checkSurfaces`, `renderReport`. |
-| [`ts-semver-checks`](packages/cli) | Thin CLI wrapper: arg parsing, report rendering, CI exit codes. |
+| Package | Install it? | What it is |
+| --- | --- | --- |
+| [`ts-semver-checks`](packages/cli) | **Yes — this is the tool** | CLI: arg parsing, report rendering, CI exit codes. |
+| [`ts-semver-checks-core`](packages/core) | Only for programmatic use | Library: `extractSurface`, `diffSurfaces`, `classify`, `checkSurfaces`, `renderReport`. Installed automatically as a dependency of the CLI. |
 
 ## CLI usage
 
@@ -55,7 +70,47 @@ ts-semver-checks ./baseline/index.d.ts ./dist/index.d.ts --expect minor
 Exit codes: `0` OK / within `--expect`, `1` required bump exceeds `--expect`, `2` usage
 error, `3` baseline fetch/resolution error.
 
+## Use in CI (GitHub Actions)
+
+Baseline mode diffs your **local build** against your **published** version, so build
+first, then run the check. Set `--expect` to the bump you intend for this release; the
+job fails if the change actually demands more.
+
+```yaml
+name: semver-check
+on: pull_request
+
+jobs:
+  api-compat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm ci
+      - run: npm run build          # must emit your .d.ts files
+
+      # Fail the PR if it breaks the public API but is only labelled a minor bump.
+      - run: npx ts-semver-checks --baseline --expect minor
+```
+
+Tips:
+
+- **Build first.** Baseline mode reads the type entry (`types` / `exports` → `types`)
+  from your `package.json`, so those `.d.ts` files must exist locally.
+- Change `--expect` per release (`patch` / `minor` / `major`) — or drive it from your
+  release tooling — so the gate matches your intended version bump.
+- Add `--json` if a later step needs to parse the findings.
+
 ## Library usage
+
+For building tools on top of the analysis engine (not needed to use the CLI):
+
+```bash
+npm install ts-semver-checks-core
+```
 
 ```ts
 import { extractSurface, checkSurfaces } from "ts-semver-checks-core";
@@ -105,8 +160,8 @@ means adding a fixture. The harness discovers them automatically.
 ## Roadmap
 
 - ~~npm baseline fetch (`--baseline <version>`, default latest published)~~ ✅ done.
-- git-ref baseline checkout (`--baseline <git-ref>`).
+- ~~CommonJS `export =` extraction~~ ✅ done.
 - Assignability-based widening/narrowing detection.
+- git-ref baseline checkout (`--baseline <git-ref>`).
 - Multi-entry-point / `package.json` `exports` map traversal (multiple subpaths).
-- `export =` / CommonJS default-export extraction.
 - Monorepo multi-package orchestration.
