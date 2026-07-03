@@ -21,23 +21,39 @@ growing fixture corpus that doubles as the spec.
 
 ## CLI usage
 
+Two modes:
+
 ```
-ts-semver-checks <before-entry> <after-entry> [options]
+# Baseline mode — compare your local build against a published npm version.
+ts-semver-checks --baseline [version] [--package-dir <dir>] [--local-entry <path>]
+
+# Two-file mode — compare two entry files directly.
+ts-semver-checks <before-entry> <after-entry>
 
   --expect <level>   Fail (exit 1) if the required bump exceeds this level.
   --json             Machine-readable output.
   --no-color         Disable ANSI colors (auto-off when not a TTY).
 ```
 
+**Baseline mode** reads the package name and type entry from your `package.json`,
+downloads the published version from npm (default: `latest`) into a temp dir, and diffs
+it against your local build. This is the "did I break my published API?" workflow:
+
+```bash
+# In CI, after building, compare HEAD against what's on npm:
+ts-semver-checks --baseline --expect minor
+```
+
 The `--expect` flag is the CI hook: pass your intended version bump, and the process
 exits non-zero if the actual change demands more.
 
 ```bash
-# In CI, after building your candidate:
+# Two-file mode:
 ts-semver-checks ./baseline/index.d.ts ./dist/index.d.ts --expect minor
 ```
 
-Exit codes: `0` OK / within `--expect`, `1` required bump exceeds `--expect`, `2` usage error.
+Exit codes: `0` OK / within `--expect`, `1` required bump exceeds `--expect`, `2` usage
+error, `3` baseline fetch/resolution error.
 
 ## Library usage
 
@@ -88,7 +104,9 @@ means adding a fixture. The harness discovers them automatically.
 
 ## Roadmap
 
-- npm baseline fetch (`--baseline <version>`, default latest published) and git-ref checkout.
+- ~~npm baseline fetch (`--baseline <version>`, default latest published)~~ ✅ done.
+- git-ref baseline checkout (`--baseline <git-ref>`).
 - Assignability-based widening/narrowing detection.
-- Multi-entry-point / `package.json` `exports` map traversal.
+- Multi-entry-point / `package.json` `exports` map traversal (multiple subpaths).
+- `export =` / CommonJS default-export extraction.
 - Monorepo multi-package orchestration.
