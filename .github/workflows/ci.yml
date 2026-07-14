@@ -18,7 +18,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # pnpm@11 (pinned via packageManager) requires Node >=22.13. The CLI's
+          # own runtime requirement (engines.node in package.json) stays >=20 —
+          # running the built dist/cli.js doesn't involve pnpm.
+          node-version: 22
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
