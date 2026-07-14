@@ -44,9 +44,12 @@ export function fetchGitBaseline(
   // while packageDir uses the long form. path.relative() is a pure string
   // comparison, so a short/long mismatch produces a bogus relative path that
   // (after path.join with the worktree) can resolve back to the *original*
-  // repo directory instead of the fresh checkout.
-  const canonicalRepoRoot = fs.realpathSync(repoRoot);
-  const canonicalPackageDir = fs.realpathSync(path.resolve(packageDir));
+  // repo directory instead of the fresh checkout. fs.realpathSync (the plain
+  // JS implementation) only resolves symlinks, NOT 8.3 short names on
+  // Windows — realpathSync.native calls the real Win32 API and does.
+  const realpath = fs.realpathSync.native ?? fs.realpathSync;
+  const canonicalRepoRoot = realpath(repoRoot);
+  const canonicalPackageDir = realpath(path.resolve(packageDir));
   const relPackageDir = path.relative(canonicalRepoRoot, canonicalPackageDir);
   const tmp = path.join(os.tmpdir(), `tssc-git-baseline-${crypto.randomBytes(6).toString("hex")}`);
 
@@ -107,8 +110,8 @@ export function fetchGitBaseline(
 
   // Defense in depth: `dir` must land inside the fresh worktree, not (via a
   // bogus relative path) back in the original repo's working directory.
-  const canonicalDir = fs.realpathSync(dir);
-  const canonicalTmp = fs.realpathSync(tmp);
+  const canonicalDir = realpath(dir);
+  const canonicalTmp = realpath(tmp);
   if (canonicalDir !== canonicalTmp && !canonicalDir.startsWith(canonicalTmp + path.sep)) {
     cleanup();
     throw new GitBaselineError(
