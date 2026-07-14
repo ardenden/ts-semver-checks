@@ -9,6 +9,8 @@ export interface ParsedArgs {
   packageDir?: string;
   /** Override the resolved local type entry (baseline mode). */
   localEntry?: string;
+  /** Override the resolved baseline type entry, relative to the fetched/checked-out package (baseline mode). */
+  baselineEntry?: string;
   json: boolean;
   color: boolean;
   expect?: SemverLevel;
@@ -84,6 +86,12 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
         result.localEntry = value;
         break;
       }
+      case "--baseline-entry": {
+        const value = argv[++i];
+        if (!value) throw new ArgError("--baseline-entry requires a path.");
+        result.baselineEntry = value;
+        break;
+      }
       default:
         if (arg.startsWith("--expect=")) {
           const value = arg.slice("--expect=".length);
@@ -97,6 +105,8 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
           result.packageDir = arg.slice("--package-dir=".length);
         } else if (arg.startsWith("--local-entry=")) {
           result.localEntry = arg.slice("--local-entry=".length);
+        } else if (arg.startsWith("--baseline-entry=")) {
+          result.baselineEntry = arg.slice("--baseline-entry=".length);
         } else if (arg.startsWith("-")) {
           throw new ArgError(`Unknown option: ${arg}`);
         } else {
@@ -115,15 +125,21 @@ export const HELP_TEXT = `ts-semver-checks — classify TypeScript API changes a
 USAGE
   ts-semver-checks <before-entry> <after-entry> [options]   (compare two files)
   ts-semver-checks --baseline [version] [options]           (compare vs npm)
+  ts-semver-checks --baseline git:<ref> [options]           (compare vs a git ref)
 
 BASELINE MODE
-  Fetches your package's published version from npm and diffs it against your
-  local build. The package name and type entry are read from package.json.
+  Fetches a baseline version of your package and diffs it against your local
+  build. The package name and type entry are read from package.json.
 
-  --baseline [version]   Published version or dist-tag to compare against
-                         (default: latest).
-  --package-dir <dir>    Local package directory to check (default: cwd).
-  --local-entry <path>   Override the resolved local type entry.
+  --baseline [version]     Published npm version or dist-tag to compare
+                           against (default: latest).
+  --baseline git:<ref>     Compare against a git tag, branch, or commit instead
+                           of npm. Checks out <ref> into a temp worktree.
+                           Requires running inside a git repository.
+  --package-dir <dir>      Local package directory to check (default: cwd).
+  --local-entry <path>     Override the resolved local type entry.
+  --baseline-entry <path>  Override the resolved baseline type entry, relative
+                           to the fetched/checked-out package.
 
 ARGUMENTS (two-file mode)
   before-entry   Path to the baseline entry file (.ts or .d.ts)
@@ -145,6 +161,8 @@ EXIT CODES
 
 EXAMPLES
   ts-semver-checks ./baseline/index.d.ts ./src/index.ts --expect minor
-  ts-semver-checks --baseline --expect minor        # vs latest published
+  ts-semver-checks --baseline --expect minor          # vs latest published
   ts-semver-checks --baseline 1.4.0 --package-dir packages/core
+  ts-semver-checks --baseline git:v1.4.0 --expect minor
+  ts-semver-checks --baseline git:main
 `;

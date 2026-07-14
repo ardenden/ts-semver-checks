@@ -6,3 +6,10 @@ export { resolvePackage, ResolveError } from "./resolve.js";
 export type { ResolvedPackage } from "./resolve.js";
 export { fetchBaselinePackage, BaselineError } from "./baseline.js";
 export type { FetchedBaseline } from "./baseline.js";
+export {
+  fetchGitBaseline,
+  GitBaselineError,
+  isGitBaselineSpec,
+  parseGitRef,
+  GIT_REF_PREFIX,
+} from "./gitBaseline.js";

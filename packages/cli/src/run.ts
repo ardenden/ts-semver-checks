@@ -8,7 +8,8 @@ import {
 } from "ts-semver-checks-core";
 import { ArgError, HELP_TEXT, parseArgs, type ParsedArgs } from "./args.js";
 import { resolvePackage, ResolveError } from "./resolve.js";
-import { BaselineError, fetchBaselinePackage } from "./baseline.js";
+import { BaselineError, fetchBaselinePackage, type FetchedBaseline } from "./baseline.js";
+import { GitBaselineError, fetchGitBaseline, isGitBaselineSpec, parseGitRef } from "./gitBaseline.js";
 
 export interface RunIO {
   stdout: (text: string) => void;
@@ -76,8 +77,9 @@ function runDirect(args: ParsedArgs, io: RunIO): number {
 // ---------------------------------------------------------------------------
 
 function runBaseline(args: ParsedArgs, io: RunIO): number {
-  const version = args.baseline ?? "latest";
+  const spec = args.baseline ?? "latest";
   const packageDir = path.resolve(args.packageDir ?? process.cwd());
+  const isGit = isGitBaselineSpec(spec);
 
   let local;
   try {
@@ -90,28 +92,47 @@ function runBaseline(args: ParsedArgs, io: RunIO): number {
     throw err;
   }
 
-  io.stderr(
-    `Comparing ${local.name}@${version} (npm)  →  local ${path.relative(process.cwd(), local.typesEntry) || local.typesEntry}\n`,
-  );
+  const localLabel = path.relative(process.cwd(), local.typesEntry) || local.typesEntry;
 
-  let fetched;
-  try {
-    fetched = fetchBaselinePackage(local.name, version, (m) => io.stderr(`${m}\n`));
-  } catch (err) {
-    if (err instanceof BaselineError) {
-      io.stderr(`${err.message}\n`);
-      return 3;
+  let fetched: FetchedBaseline;
+  if (isGit) {
+    const ref = parseGitRef(spec);
+    io.stderr(`Comparing git:${ref}  →  local ${localLabel}\n`);
+    try {
+      fetched = fetchGitBaseline(ref, packageDir, (m) => io.stderr(`${m}\n`));
+    } catch (err) {
+      if (err instanceof GitBaselineError) {
+        io.stderr(`${err.message}\n`);
+        return 3;
+      }
+      throw err;
     }
-    throw err;
+  } else {
+    io.stderr(`Comparing ${local.name}@${spec} (npm)  →  local ${localLabel}\n`);
+    try {
+      fetched = fetchBaselinePackage(local.name, spec, (m) => io.stderr(`${m}\n`));
+    } catch (err) {
+      if (err instanceof BaselineError) {
+        io.stderr(`${err.message}\n`);
+        return 3;
+      }
+      throw err;
+    }
   }
 
   try {
     let baselineEntry: string;
     try {
-      baselineEntry = resolvePackage(fetched.dir).typesEntry;
+      // args.baselineEntry is relative to the fetched/checked-out package dir
+      // (a temp path the user can't know in advance), not to cwd.
+      const override = args.baselineEntry
+        ? path.join(fetched.dir, args.baselineEntry)
+        : undefined;
+      baselineEntry = resolvePackage(fetched.dir, override).typesEntry;
     } catch (err) {
       if (err instanceof ResolveError) {
-        io.stderr(`Could not read the published baseline: ${err.message}\n`);
+        const source = isGit ? "git baseline" : "published baseline";
+        io.stderr(`Could not read the ${source}: ${err.message}\n`);
         return 3;
       }
       throw err;

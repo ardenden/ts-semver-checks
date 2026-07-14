@@ -15,11 +15,12 @@ usage, modes, and the rule set.
 
 ```
 ts-semver-checks --baseline [version]          # compare local build vs npm
+ts-semver-checks --baseline git:<ref>          # compare local build vs a git tag/branch/commit
 ts-semver-checks <before-entry> <after-entry>  # compare two entry files
 ```
 
 Key flags: `--expect <major|minor|patch>` (CI gate), `--json`, `--package-dir`,
-`--local-entry`. Exit codes: `0` ok, `1` bump exceeds `--expect`, `2` usage, `3` baseline
-fetch/resolution error.
+`--local-entry`, `--baseline-entry`. Exit codes: `0` ok, `1` bump exceeds `--expect`,
+`2` usage, `3` baseline fetch/resolution error.
 
 MIT © ardenden

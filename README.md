@@ -36,11 +36,14 @@ growing fixture corpus that doubles as the spec.
 
 ## CLI usage
 
-Two modes:
+Three modes:
 
 ```
 # Baseline mode — compare your local build against a published npm version.
 ts-semver-checks --baseline [version] [--package-dir <dir>] [--local-entry <path>]
+
+# Baseline mode — compare against a git tag, branch, or commit instead of npm.
+ts-semver-checks --baseline git:<ref> [--package-dir <dir>] [--baseline-entry <path>]
 
 # Two-file mode — compare two entry files directly.
 ts-semver-checks <before-entry> <after-entry>
@@ -50,14 +53,26 @@ ts-semver-checks <before-entry> <after-entry>
   --no-color         Disable ANSI colors (auto-off when not a TTY).
 ```
 
-**Baseline mode** reads the package name and type entry from your `package.json`,
-downloads the published version from npm (default: `latest`) into a temp dir, and diffs
-it against your local build. This is the "did I break my published API?" workflow:
+**Baseline mode** reads the package name and type entry from your `package.json` and
+diffs it against your local build. This is the "did I break my public API?" workflow:
 
 ```bash
-# In CI, after building, compare HEAD against what's on npm:
+# vs the latest version published on npm:
 ts-semver-checks --baseline --expect minor
+
+# vs a specific published version:
+ts-semver-checks --baseline 1.4.0 --expect minor
+
+# vs a git tag/branch/commit — no npm publish required, useful for pre-release
+# branches or packages you haven't published yet:
+ts-semver-checks --baseline git:v1.4.0 --expect minor
+ts-semver-checks --baseline git:main
 ```
+
+The `git:` form checks out `<ref>` into a temporary worktree (requires running inside a
+git repository) and resolves the package the same way as the local side. If that ref
+predates your build step (no committed `.d.ts`), point `--baseline-entry` at the source
+entry instead, e.g. `--baseline-entry src/index.ts`.
 
 The `--expect` flag is the CI hook: pass your intended version bump, and the process
 exits non-zero if the actual change demands more.
@@ -176,7 +191,7 @@ means adding a fixture. The harness discovers them automatically.
 - ~~npm baseline fetch (`--baseline <version>`, default latest published)~~ ✅ done.
 - ~~CommonJS `export =` extraction~~ ✅ done.
 - ~~Assignability-based widening/narrowing detection (parameters + return types)~~ ✅ done.
+- ~~git-ref baseline checkout (`--baseline git:<ref>`)~~ ✅ done.
 - Extend assignability to property types, type aliases, and generic constraints.
-- git-ref baseline checkout (`--baseline <git-ref>`).
 - Multi-entry-point / `package.json` `exports` map traversal (multiple subpaths).
 - Monorepo multi-package orchestration.
