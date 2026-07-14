@@ -39,7 +39,15 @@ export function fetchGitBaseline(
   const repoRoot = resolveGitRoot(packageDir);
   const sha = resolveCommit(repoRoot, ref);
 
-  const relPackageDir = path.relative(repoRoot, path.resolve(packageDir));
+  // Canonicalize both sides before diffing: `git rev-parse --show-toplevel`
+  // can return an 8.3 short-name path segment on Windows (e.g. `RUNNER~1`)
+  // while packageDir uses the long form. path.relative() is a pure string
+  // comparison, so a short/long mismatch produces a bogus relative path that
+  // (after path.join with the worktree) can resolve back to the *original*
+  // repo directory instead of the fresh checkout.
+  const canonicalRepoRoot = fs.realpathSync(repoRoot);
+  const canonicalPackageDir = fs.realpathSync(path.resolve(packageDir));
+  const relPackageDir = path.relative(canonicalRepoRoot, canonicalPackageDir);
   const tmp = path.join(os.tmpdir(), `tssc-git-baseline-${crypto.randomBytes(6).toString("hex")}`);
 
   const cleanup = () => {
@@ -94,6 +102,18 @@ export function fetchGitBaseline(
     cleanup();
     throw new GitBaselineError(
       `Package directory '${relPackageDir || "."}' does not exist at ref '${ref}'.`,
+    );
+  }
+
+  // Defense in depth: `dir` must land inside the fresh worktree, not (via a
+  // bogus relative path) back in the original repo's working directory.
+  const canonicalDir = fs.realpathSync(dir);
+  const canonicalTmp = fs.realpathSync(tmp);
+  if (canonicalDir !== canonicalTmp && !canonicalDir.startsWith(canonicalTmp + path.sep)) {
+    cleanup();
+    throw new GitBaselineError(
+      `Resolved package directory '${dir}' is outside the checked-out worktree ` +
+        `'${tmp}'. This indicates a path-resolution bug rather than a problem with '${ref}'.`,
     );
   }
 
