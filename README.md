@@ -22,6 +22,10 @@ You do **not** need to install anything else. The CLI depends on the
 pulls it in automatically. Only install `ts-semver-checks-core` directly if you're
 building your own tooling on top of the analysis engine (see [Library usage](#library-usage)).
 
+**Requires `typescript` `>=5.0.0 <7.0.0`.** This tool is built on the classic TypeScript
+Compiler API (`ts.createProgram`, `ts.TypeChecker`, …); TypeScript 7's native/Go-based
+compiler doesn't expose that API, so it's explicitly excluded as a peer dependency.
+
 ## Status
 
 Early MVP. It proves the full pipeline end-to-end — extract → diff → classify — over a

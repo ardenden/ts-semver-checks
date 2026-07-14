@@ -1,6 +1,6 @@
 {
   "name": "ts-semver-checks-core",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Core library: extract, diff and classify the exported type surface of a TypeScript package.",
   "keywords": ["semver", "typescript", "api", "breaking-change", "types", "diff"],
   "homepage": "https://github.com/ardenden/ts-semver-checks#readme",
@@ -28,7 +28,7 @@
     "prepublishOnly": "tsc -p tsconfig.json"
   },
   "peerDependencies": {
-    "typescript": ">=5.0.0"
+    "typescript": ">=5.0.0 <7.0.0"
   },
   "publishConfig": {
     "access": "public"
