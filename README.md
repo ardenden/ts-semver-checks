@@ -1,5 +1,9 @@
 # ts-semver-checks
 
+[![CI](https://github.com/ardenden/ts-semver-checks/actions/workflows/ci.yml/badge.svg)](https://github.com/ardenden/ts-semver-checks/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/ts-semver-checks.svg)](https://www.npmjs.com/package/ts-semver-checks)
+[![license](https://img.shields.io/npm/l/ts-semver-checks.svg)](LICENSE)
+
 Diff the **exported type surface** of a TypeScript package between two versions and
 classify the change as **major / minor / patch** — the TypeScript equivalent of Rust's
 [`cargo-semver-checks`](https://github.com/obi1kenobi/cargo-semver-checks).
@@ -188,7 +192,12 @@ pnpm test              # vitest, runs the fixture corpus
 
 Each directory under [`packages/core/test/fixtures`](packages/core/test/fixtures) is a
 `before.ts` + `after.ts` pair plus `expected.json` (`{ level, codes }`). Adding a rule
-means adding a fixture. The harness discovers them automatically.
+means adding a fixture. The harness discovers them automatically — currently 23 fixtures
+covering exports, parameters, properties, enums, classes, generics, CommonJS `export =`,
+and assignability-based widening/narrowing.
+
+[CI](.github/workflows/ci.yml) runs the full build → typecheck → test pipeline on every
+push and PR, on both Ubuntu and Windows.
 
 ## Roadmap
 
