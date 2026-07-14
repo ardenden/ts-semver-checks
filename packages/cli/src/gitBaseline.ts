@@ -59,7 +59,11 @@ export function fetchGitBaseline(
   };
 
   log(`Checking out ${ref} (${sha.slice(0, 12)}) into a temp worktree…`);
-  const add = spawnSync("git", ["worktree", "add", "--detach", tmp, sha], {
+  // Pass the original ref string, not the pre-resolved sha: `worktree add`
+  // resolves it itself in one atomic step, so there is no window where a
+  // malformed/unexpected `rev-parse` stdout (e.g. an extra line on a git
+  // version we haven't seen) could get fed into the checkout as a bad target.
+  const add = spawnSync("git", ["worktree", "add", "--detach", tmp, ref], {
     cwd: repoRoot,
     encoding: "utf8",
   });
@@ -69,6 +73,19 @@ export function fetchGitBaseline(
   if (add.status !== 0) {
     throw new GitBaselineError(
       `git worktree add failed for ref '${ref}':\n${(add.stderr || add.stdout || "").trim()}`,
+    );
+  }
+
+  // Defense in depth: confirm the worktree actually landed on the commit we
+  // validated above, so a resolution mismatch fails loudly instead of silently
+  // diffing against the wrong content.
+  const headCheck = spawnSync("git", ["rev-parse", "HEAD"], { cwd: tmp, encoding: "utf8" });
+  const headSha = headCheck.status === 0 ? headCheck.stdout.trim() : undefined;
+  if (headSha !== sha) {
+    cleanup();
+    throw new GitBaselineError(
+      `Checked-out worktree HEAD (${headSha ?? "unknown"}) does not match resolved ref ` +
+        `'${ref}' (${sha}). Refusing to compare against the wrong commit.`,
     );
   }
 
