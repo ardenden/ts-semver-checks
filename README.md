@@ -149,35 +149,39 @@ const { level, findings } = checkSurfaces(before, after);
 Currently detected (see [`packages/core/src/diff.ts`](packages/core/src/diff.ts)):
 
 - **major:** removed export, changed export kind, removed/added-required parameter,
-  parameter type **narrowed**, return type **widened**, optional→required, removed/changed
-  interface member, new required interface member/method, removed/changed enum member,
-  type-alias/generic-constraint change, class made abstract, removed constructor.
+  parameter type **narrowed**, return/readonly-property type **widened**, optional→required,
+  removed/changed interface member, new required interface member/method, removed/changed
+  enum member, generic-constraint change, class made abstract, removed constructor.
 - **minor:** new export, new optional parameter/property, required→optional, parameter
-  type **widened**, return type **narrowed**, new class member, new enum member, added
-  overload, type parameter added with a default.
+  type **widened**, return/readonly-property type **narrowed**, new class member, new enum
+  member, added overload, type parameter added with a default.
 - **patch:** no surface change (including type changes that are actually equivalent, e.g.
-  `string[]` ↔ `Array<string>`).
+  `string[]` ↔ `Array<string>`, on parameters, returns, properties, or type aliases).
 
 ### Assignability
 
-When both entry points are available (baseline mode and two-file mode), type changes on
-**function parameters and return types** are classified by the compiler's *assignability*
-relation rather than by string comparison:
+When both entry points are available (baseline mode and two-file mode), type changes are
+classified by the compiler's *assignability* relation rather than by string comparison, by
+building a single program containing both the old and new entry points so one checker can
+compare types across the two versions:
 
-- Parameters are contravariant — a **widened** parameter still accepts every previous
-  input, so it's **minor**; a **narrowed** one is **major**.
-- Return types are covariant — a **narrowed** return is a subtype of the old one, so it's
-  **minor**; a **widened** one is **major**.
-- Types that are mutually assignable are treated as **equivalent** and produce no finding.
+- **Function parameters** are contravariant — a **widened** parameter still accepts every
+  previous input, so it's **minor**; a **narrowed** one is **major**.
+- **Return types** are covariant — a **narrowed** return is a subtype of the old one, so
+  it's **minor**; a **widened** one is **major**.
+- **Readonly interface/class properties** are covariant too (consumers can only ever read
+  them, same as a return type) — narrowing is **minor**, widening is **major**.
+- **Mutable properties and type aliases** can be used by unknown consumers in both read
+  and write positions, so a safe direction can't be assumed — only true **equivalence**
+  (mutually assignable, e.g. `string[]` vs `Array<string>`) is reclassified, as a dropped
+  false positive. Any other change stays **major**, since we can't prove it's safe.
+- Anything mutually assignable in the applicable cases above is treated as **equivalent**
+  and produces no finding at all — a **patch**.
 
-This is done by building a single program containing both the old and new entry points,
-so one checker can compare types across the two versions.
-
-**Still conservative:** interface/class property types, type aliases, and generic
-constraints are compared structurally (as strings) and, when a direction can't be proven,
-classified **major** — a CI gate should err toward safety. Extending assignability to
-those is future work. The pure string path (`checkSurfaces` over serialized surfaces) is
-also always conservative, since it has no live types to compare.
+**Still conservative:** generic/type-parameter constraints are compared structurally (as
+strings) and, when a direction can't be proven, classified **major**. Extending
+assignability there is future work. The pure string path (`checkSurfaces` over serialized
+surfaces) is also always conservative, since it has no live types to compare.
 
 ## Development
 
@@ -192,9 +196,9 @@ pnpm test              # vitest, runs the fixture corpus
 
 Each directory under [`packages/core/test/fixtures`](packages/core/test/fixtures) is a
 `before.ts` + `after.ts` pair plus `expected.json` (`{ level, codes }`). Adding a rule
-means adding a fixture. The harness discovers them automatically — currently 23 fixtures
+means adding a fixture. The harness discovers them automatically — currently 29 fixtures
 covering exports, parameters, properties, enums, classes, generics, CommonJS `export =`,
-and assignability-based widening/narrowing.
+and assignability-based widening/narrowing/equivalence.
 
 [CI](.github/workflows/ci.yml) runs the full build → typecheck → test pipeline on every
 push and PR, on both Ubuntu and Windows.
@@ -205,6 +209,8 @@ push and PR, on both Ubuntu and Windows.
 - ~~CommonJS `export =` extraction~~ ✅ done.
 - ~~Assignability-based widening/narrowing detection (parameters + return types)~~ ✅ done.
 - ~~git-ref baseline checkout (`--baseline git:<ref>`)~~ ✅ done.
-- Extend assignability to property types, type aliases, and generic constraints.
+- ~~Extend assignability to property types and type aliases~~ ✅ done (equivalence for
+  mutable properties/aliases; covariant narrow/widen for readonly properties).
+- Extend assignability to generic/type-parameter constraints.
 - Multi-entry-point / `package.json` `exports` map traversal (multiple subpaths).
 - Monorepo multi-package orchestration.

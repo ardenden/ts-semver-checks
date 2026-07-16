@@ -13,14 +13,16 @@ import type { Finding } from "./findings.js";
  *
  *   - Parameters are contravariant: a widened parameter (new accepts everything
  *     old did) is non-breaking (minor); a narrowed one is breaking (major).
- *   - Return types are covariant: a narrowed return (new returns a subtype of
- *     old) is non-breaking (minor); a widened one is breaking (major).
- *   - When the two types are mutually assignable they are equivalent, and the
- *     structural finding was a false positive (e.g. `string[]` vs `Array<string>`);
- *     it is dropped.
+ *   - Return types, and READONLY properties (read-only = consumers only ever
+ *     read them, same as a return type), are covariant: narrowing is
+ *     non-breaking (minor); widening is breaking (major).
+ *   - Mutable properties and type aliases can be used by unknown consumers in
+ *     both read and write positions, so direction can't be safely assumed for
+ *     them; only mutual assignability (true equivalence, e.g. `string[]` vs
+ *     `Array<string>`) is reclassified — as a dropped false positive — and any
+ *     other change is left exactly as the structural differ reported it.
  *
- * Anything it can't confidently reclassify is left exactly as the structural
- * differ reported it.
+ * Anything it can't confidently reclassify is left exactly as-is.
  */
 
 interface FnSignature {
@@ -28,10 +30,19 @@ interface FnSignature {
   ret: ts.Type;
 }
 
+interface PropertyInfo {
+  type: ts.Type;
+  readonly: boolean;
+}
+
 interface Comparison {
   checker: ts.TypeChecker;
   oldFns: Map<string, FnSignature>;
   newFns: Map<string, FnSignature>;
+  oldProps: Map<string, PropertyInfo>;
+  newProps: Map<string, PropertyInfo>;
+  oldAliases: Map<string, ts.Type>;
+  newAliases: Map<string, ts.Type>;
 }
 
 const DEFAULT_COMPILER_OPTIONS: ts.CompilerOptions = {
@@ -88,53 +99,108 @@ function buildComparison(
   }
 
   const checker = program.getTypeChecker();
-  const oldFns = collectFunctions(program, checker, oldPath);
-  const newFns = collectFunctions(program, checker, newPath);
-  if (!oldFns || !newFns) return undefined;
+  const oldCollected = collectSymbols(program, checker, oldPath);
+  const newCollected = collectSymbols(program, checker, newPath);
+  if (!oldCollected || !newCollected) return undefined;
 
-  return { checker, oldFns, newFns };
+  return {
+    checker,
+    oldFns: oldCollected.fns,
+    newFns: newCollected.fns,
+    oldProps: oldCollected.props,
+    newProps: newCollected.props,
+    oldAliases: oldCollected.aliases,
+    newAliases: newCollected.aliases,
+  };
 }
 
-function collectFunctions(
+interface Collected {
+  fns: Map<string, FnSignature>;
+  props: Map<string, PropertyInfo>;
+  aliases: Map<string, ts.Type>;
+}
+
+function collectSymbols(
   program: ts.Program,
   checker: ts.TypeChecker,
   entry: string,
-): Map<string, FnSignature> | undefined {
+): Collected | undefined {
   const sourceFile = program.getSourceFile(entry);
   if (!sourceFile) return undefined;
   const moduleSymbol = checker.getSymbolAtLocation(sourceFile);
-  if (!moduleSymbol) return new Map();
+  if (!moduleSymbol) return { fns: new Map(), props: new Map(), aliases: new Map() };
 
-  const result = new Map<string, FnSignature>();
+  const fns = new Map<string, FnSignature>();
+  const props = new Map<string, PropertyInfo>();
+  const aliases = new Map<string, ts.Type>();
 
   const add = (name: string, symbol: ts.Symbol) => {
     const resolved = symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
-    if ((resolved.getFlags() & ts.SymbolFlags.Function) === 0) return;
-    const decl = resolved.getDeclarations()?.[0] ?? resolved.valueDeclaration;
-    if (!decl) return;
-    const type = checker.getTypeOfSymbolAtLocation(resolved, decl);
-    const signatures = type.getCallSignatures();
-    // Only single-signature functions are refined; overloads are left as-is.
-    if (signatures.length !== 1) return;
-    const sig = signatures[0]!;
-    const params = sig.getParameters().map((p) => {
-      const pd = p.valueDeclaration ?? p.declarations?.[0];
-      return pd ? checker.getTypeOfSymbolAtLocation(p, pd) : checker.getTypeOfSymbol(p);
-    });
-    result.set(name, { params, ret: sig.getReturnType() });
+    const flags = resolved.getFlags();
+
+    if (flags & ts.SymbolFlags.Function) {
+      addFunction(name, resolved, checker, fns);
+    } else if (flags & (ts.SymbolFlags.Interface | ts.SymbolFlags.Class)) {
+      addMembers(name, resolved, checker, props);
+    } else if (flags & ts.SymbolFlags.TypeAlias) {
+      aliases.set(name, checker.getDeclaredTypeOfSymbol(resolved));
+    }
   };
 
   for (const exp of checker.getExportsOfModule(moduleSymbol)) {
-    add(exp_name(exp), exp);
+    add(exp.getName(), exp);
   }
   const exportEquals = moduleSymbol.exports?.get("export=" as ts.__String);
   if (exportEquals) add("export=", exportEquals);
 
-  return result;
+  return { fns, props, aliases };
 }
 
-function exp_name(symbol: ts.Symbol): string {
-  return symbol.getName();
+function addFunction(
+  name: string,
+  resolved: ts.Symbol,
+  checker: ts.TypeChecker,
+  fns: Map<string, FnSignature>,
+): void {
+  if ((resolved.getFlags() & ts.SymbolFlags.Function) === 0) return;
+  const decl = resolved.getDeclarations()?.[0] ?? resolved.valueDeclaration;
+  if (!decl) return;
+  const type = checker.getTypeOfSymbolAtLocation(resolved, decl);
+  const signatures = type.getCallSignatures();
+  // Only single-signature functions are refined; overloads are left as-is.
+  if (signatures.length !== 1) return;
+  const sig = signatures[0]!;
+  const params = sig.getParameters().map((p) => {
+    const pd = p.valueDeclaration ?? p.declarations?.[0];
+    return pd ? checker.getTypeOfSymbolAtLocation(p, pd) : checker.getTypeOfSymbol(p);
+  });
+  fns.set(name, { params, ret: sig.getReturnType() });
+}
+
+function addMembers(
+  ownerName: string,
+  resolved: ts.Symbol,
+  checker: ts.TypeChecker,
+  props: Map<string, PropertyInfo>,
+): void {
+  const type = checker.getDeclaredTypeOfSymbol(resolved);
+  for (const member of type.getProperties()) {
+    if (member.getFlags() & ts.SymbolFlags.Method) continue; // methods refined structurally only
+    const decl = member.getDeclarations()?.[0];
+    const memberType = decl
+      ? checker.getTypeOfSymbolAtLocation(member, decl)
+      : checker.getTypeOfSymbol(member);
+    props.set(`${ownerName}.${member.getName()}`, {
+      type: memberType,
+      readonly: isReadonlyMember(member),
+    });
+  }
+}
+
+function isReadonlyMember(member: ts.Symbol): boolean {
+  const decl = member.getDeclarations()?.[0];
+  if (!decl || !ts.canHaveModifiers(decl)) return false;
+  return ts.getModifiers(decl)?.some((m) => m.kind === ts.SyntaxKind.ReadonlyKeyword) ?? false;
 }
 
 function refineOne(finding: Finding, cmp: Comparison): Finding | null {
@@ -172,22 +238,69 @@ function refineOne(finding: Finding, cmp: Comparison): Finding | null {
     const newR = cmp.newFns.get(fnName)?.ret;
     if (!oldR || !newR) return finding;
 
-    const newToOld = cmp.checker.isTypeAssignableTo(newR, oldR);
-    const oldToNew = cmp.checker.isTypeAssignableTo(oldR, newR);
+    return refineCovariant(finding, cmp.checker, oldR, newR, "returnType.narrowed", "return type");
+  }
 
-    if (newToOld && oldToNew) return null; // equivalent
-    if (newToOld) {
-      // New return is a subtype of the old one → narrowing → safe for consumers.
-      return {
-        ...finding,
-        level: "minor",
-        code: "returnType.narrowed",
-        message: finding.message.replace("changed", "narrowed") +
-          " (a subtype of the previous return type).",
-      };
+  if (finding.code === "property.typeChanged") {
+    const oldP = cmp.oldProps.get(finding.path);
+    const newP = cmp.newProps.get(finding.path);
+    if (!oldP || !newP) return finding;
+
+    // Both a reader (return-like) and a writer (param-like) unless the
+    // property is readonly in both versions, in which case only reads are
+    // possible and it is safe to treat like a return type (covariant).
+    if (!oldP.readonly || !newP.readonly) {
+      return refineInvariant(finding, cmp.checker, oldP.type, newP.type);
     }
-    return finding; // widened or incompatible → stays major
+    return refineCovariant(finding, cmp.checker, oldP.type, newP.type, "property.typeNarrowed", "property type");
+  }
+
+  if (finding.code === "typeAlias.changed") {
+    const oldA = cmp.oldAliases.get(finding.path);
+    const newA = cmp.newAliases.get(finding.path);
+    if (!oldA || !newA) return finding;
+    // A type alias's consumer-side variance is unknowable from the
+    // declaration alone, so only equivalence (not directional widen/narrow)
+    // is safe to reclassify here.
+    return refineInvariant(finding, cmp.checker, oldA, newA);
   }
 
   return finding;
+}
+
+/** Covariant refinement (return types, readonly properties): narrowing is safe. */
+function refineCovariant(
+  finding: Finding,
+  checker: ts.TypeChecker,
+  oldType: ts.Type,
+  newType: ts.Type,
+  narrowedCode: string,
+  label: string,
+): Finding | null {
+  const newToOld = checker.isTypeAssignableTo(newType, oldType);
+  const oldToNew = checker.isTypeAssignableTo(oldType, newType);
+
+  if (newToOld && oldToNew) return null; // equivalent
+  if (newToOld) {
+    return {
+      ...finding,
+      level: "minor",
+      code: narrowedCode,
+      message: finding.message.replace(/(type )?changed/, "$1narrowed") +
+        ` (a subtype of the previous ${label}).`,
+    };
+  }
+  return finding; // widened or incompatible → stays major
+}
+
+/** Invariant refinement (mutable properties, type aliases): only equivalence is safe. */
+function refineInvariant(
+  finding: Finding,
+  checker: ts.TypeChecker,
+  oldType: ts.Type,
+  newType: ts.Type,
+): Finding | null {
+  const oldToNew = checker.isTypeAssignableTo(oldType, newType);
+  const newToOld = checker.isTypeAssignableTo(newType, oldType);
+  return oldToNew && newToOld ? null : finding;
 }

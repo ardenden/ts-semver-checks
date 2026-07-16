@@ -1,0 +1,1 @@
+{ "level": "major", "codes": ["property.typeChanged"], "description": "Widening a readonly property can break consumers relying on the narrower type." }

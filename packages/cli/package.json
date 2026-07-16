@@ -1,6 +1,6 @@
 {
   "name": "ts-semver-checks",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "description": "Fail your build when a PR breaks your TypeScript package's public API but the version bump says otherwise.",
   "keywords": ["semver", "typescript", "api", "breaking-change", "types", "ci", "cli"],
   "homepage": "https://github.com/ardenden/ts-semver-checks#readme",

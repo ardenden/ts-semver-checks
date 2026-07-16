@@ -1,0 +1,1 @@
+{ "level": "patch", "codes": [], "description": "A type alias's consumer variance is unknown, but truly equivalent types are still a false positive." }

@@ -1,0 +1,1 @@
+{ "level": "patch", "codes": [], "description": "string[] and Array<string> are the same type on a mutable property; no real change." }

@@ -1,0 +1,1 @@
+{ "level": "minor", "codes": ["property.typeNarrowed"], "description": "Narrowing a readonly property is safe (read-only = covariant, like a return type)." }

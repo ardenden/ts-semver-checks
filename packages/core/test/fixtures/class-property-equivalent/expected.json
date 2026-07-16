@@ -1,0 +1,1 @@
+{ "level": "patch", "codes": [], "description": "Equivalent types on a class property are a false positive; covers the class (not just interface) code path." }
