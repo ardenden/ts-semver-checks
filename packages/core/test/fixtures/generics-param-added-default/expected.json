@@ -1,0 +1,1 @@
+{ "level": "minor", "codes": ["generics.typeParamAdded"], "description": "Adding a type parameter with a default keeps existing usages compiling." }

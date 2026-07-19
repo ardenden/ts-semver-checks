@@ -1,0 +1,1 @@
+{ "level": "minor", "codes": ["generics.constraintRelaxed"], "description": "Widening a type-parameter constraint allows all previous instantiations plus more." }

@@ -1,0 +1,1 @@
+{ "level": "major", "codes": ["generics.typeParamRemoved"], "description": "Removing a type parameter breaks references that supply that argument." }

@@ -1,0 +1,1 @@
+{ "level": "minor", "codes": ["generics.defaultAdded"], "description": "Adding a type-parameter default lets callers omit it; non-breaking." }

@@ -1,0 +1,1 @@
+{ "level": "major", "codes": ["generics.constraintChanged"], "description": "Tightening a constraint rejects previously-valid type arguments." }

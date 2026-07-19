@@ -1,0 +1,1 @@
+{ "level": "minor", "codes": ["generics.constraintRelaxed"], "description": "Removing a constraint entirely allows all previous instantiations plus more." }

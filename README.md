@@ -151,12 +151,15 @@ Currently detected (see [`packages/core/src/diff.ts`](packages/core/src/diff.ts)
 - **major:** removed export, changed export kind, removed/added-required parameter,
   parameter type **narrowed**, return/readonly-property type **widened**, optional→required,
   removed/changed interface member, new required interface member/method, removed/changed
-  enum member, generic-constraint change, class made abstract, removed constructor.
+  enum member, generic-constraint **tightened**/added, type-parameter default removed/changed,
+  required type parameter added, type parameter removed, class made abstract, removed constructor.
 - **minor:** new export, new optional parameter/property, required→optional, parameter
-  type **widened**, return/readonly-property type **narrowed**, new class member, new enum
-  member, added overload, type parameter added with a default.
+  type **widened**, return/readonly-property type **narrowed**, generic-constraint
+  **relaxed**/removed, type-parameter default added, type parameter added with a default,
+  new class member, new enum member, added overload.
 - **patch:** no surface change (including type changes that are actually equivalent, e.g.
-  `string[]` ↔ `Array<string>`, on parameters, returns, properties, or type aliases).
+  `string[]` ↔ `Array<string>`, on parameters, returns, properties, type aliases, or
+  generic constraints).
 
 ### Assignability
 
@@ -175,13 +178,18 @@ compare types across the two versions:
   and write positions, so a safe direction can't be assumed — only true **equivalence**
   (mutually assignable, e.g. `string[]` vs `Array<string>`) is reclassified, as a dropped
   false positive. Any other change stays **major**, since we can't prove it's safe.
+- **Generic type-parameter constraints** are an upper bound on what callers may instantiate
+  the parameter with. Relaxing or removing a constraint (the old bound is assignable to the
+  new one) allows all previous type arguments plus more, so it's **minor**; tightening or
+  adding one is **major**.
 - Anything mutually assignable in the applicable cases above is treated as **equivalent**
   and produces no finding at all — a **patch**.
 
-**Still conservative:** generic/type-parameter constraints are compared structurally (as
-strings) and, when a direction can't be proven, classified **major**. Extending
-assignability there is future work. The pure string path (`checkSurfaces` over serialized
-surfaces) is also always conservative, since it has no live types to compare.
+**Still conservative:** mutable properties and type aliases fall back to equivalence-only
+refinement (see above), and the pure string path (`checkSurfaces` over serialized surfaces)
+is always conservative since it has no live types to compare. Renaming a type parameter that
+appears in signatures is currently reported as a type change rather than recognized as a
+no-op rename.
 
 ## Development
 
@@ -196,9 +204,9 @@ pnpm test              # vitest, runs the fixture corpus
 
 Each directory under [`packages/core/test/fixtures`](packages/core/test/fixtures) is a
 `before.ts` + `after.ts` pair plus `expected.json` (`{ level, codes }`). Adding a rule
-means adding a fixture. The harness discovers them automatically — currently 29 fixtures
-covering exports, parameters, properties, enums, classes, generics, CommonJS `export =`,
-and assignability-based widening/narrowing/equivalence.
+means adding a fixture. The harness discovers them automatically — currently 39 fixtures
+covering exports, parameters, properties, enums, classes, generic constraints/defaults,
+CommonJS `export =`, and assignability-based widening/narrowing/equivalence.
 
 [CI](.github/workflows/ci.yml) runs the full build → typecheck → test pipeline on every
 push and PR, on both Ubuntu and Windows.
@@ -211,6 +219,8 @@ push and PR, on both Ubuntu and Windows.
 - ~~git-ref baseline checkout (`--baseline git:<ref>`)~~ ✅ done.
 - ~~Extend assignability to property types and type aliases~~ ✅ done (equivalence for
   mutable properties/aliases; covariant narrow/widen for readonly properties).
-- Extend assignability to generic/type-parameter constraints.
+- ~~Extend assignability to generic/type-parameter constraints~~ ✅ done (relax/tighten,
+  add/remove constraint, defaults, add/remove type parameter).
 - Multi-entry-point / `package.json` `exports` map traversal (multiple subpaths).
 - Monorepo multi-package orchestration.
+- Recognize type-parameter renames as non-breaking (alpha-normalize signatures).

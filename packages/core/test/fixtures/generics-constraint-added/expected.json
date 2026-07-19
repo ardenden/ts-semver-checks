@@ -1,0 +1,1 @@
+{ "level": "major", "codes": ["generics.constraintChanged"], "description": "Adding a constraint where there was none rejects previously-valid type arguments." }

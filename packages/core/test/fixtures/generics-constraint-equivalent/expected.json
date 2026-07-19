@@ -1,0 +1,1 @@
+{ "level": "patch", "codes": [], "description": "string[] and Array<string> are the same constraint; no real change." }

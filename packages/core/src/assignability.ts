@@ -21,6 +21,9 @@ import type { Finding } from "./findings.js";
  *     them; only mutual assignability (true equivalence, e.g. `string[]` vs
  *     `Array<string>`) is reclassified — as a dropped false positive — and any
  *     other change is left exactly as the structural differ reported it.
+ *   - A type-parameter constraint is an upper bound on what callers may
+ *     instantiate the parameter with. Relaxing/removing it (old bound assignable
+ *     to new) is non-breaking (minor); tightening/adding it is breaking (major).
  *
  * Anything it can't confidently reclassify is left exactly as-is.
  */
@@ -43,6 +46,9 @@ interface Comparison {
   newProps: Map<string, PropertyInfo>;
   oldAliases: Map<string, ts.Type>;
   newAliases: Map<string, ts.Type>;
+  // owner name -> per-position type-parameter constraint (undefined = unconstrained)
+  oldConstraints: Map<string, (ts.Type | undefined)[]>;
+  newConstraints: Map<string, (ts.Type | undefined)[]>;
 }
 
 const DEFAULT_COMPILER_OPTIONS: ts.CompilerOptions = {
@@ -56,6 +62,7 @@ const DEFAULT_COMPILER_OPTIONS: ts.CompilerOptions = {
 
 const PARAM_PATH = /^(.+)\.params\[(\d+)\]$/;
 const RETURN_PATH = /^(.+)\.returnType$/;
+const TYPEPARAM_PATH = /^(.+)\.typeParams\[(\d+)\]$/;
 
 /**
  * Refine structural findings using assignability. Returns a new list; findings
@@ -111,6 +118,8 @@ function buildComparison(
     newProps: newCollected.props,
     oldAliases: oldCollected.aliases,
     newAliases: newCollected.aliases,
+    oldConstraints: oldCollected.constraints,
+    newConstraints: newCollected.constraints,
   };
 }
 
@@ -118,6 +127,7 @@ interface Collected {
   fns: Map<string, FnSignature>;
   props: Map<string, PropertyInfo>;
   aliases: Map<string, ts.Type>;
+  constraints: Map<string, (ts.Type | undefined)[]>;
 }
 
 function collectSymbols(
@@ -128,11 +138,14 @@ function collectSymbols(
   const sourceFile = program.getSourceFile(entry);
   if (!sourceFile) return undefined;
   const moduleSymbol = checker.getSymbolAtLocation(sourceFile);
-  if (!moduleSymbol) return { fns: new Map(), props: new Map(), aliases: new Map() };
+  if (!moduleSymbol) {
+    return { fns: new Map(), props: new Map(), aliases: new Map(), constraints: new Map() };
+  }
 
   const fns = new Map<string, FnSignature>();
   const props = new Map<string, PropertyInfo>();
   const aliases = new Map<string, ts.Type>();
+  const constraints = new Map<string, (ts.Type | undefined)[]>();
 
   const add = (name: string, symbol: ts.Symbol) => {
     const resolved = symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
@@ -145,6 +158,9 @@ function collectSymbols(
     } else if (flags & ts.SymbolFlags.TypeAlias) {
       aliases.set(name, checker.getDeclaredTypeOfSymbol(resolved));
     }
+
+    const tpConstraints = collectConstraints(resolved, checker);
+    if (tpConstraints) constraints.set(name, tpConstraints);
   };
 
   for (const exp of checker.getExportsOfModule(moduleSymbol)) {
@@ -153,7 +169,29 @@ function collectSymbols(
   const exportEquals = moduleSymbol.exports?.get("export=" as ts.__String);
   if (exportEquals) add("export=", exportEquals);
 
-  return { fns, props, aliases };
+  return { fns, props, aliases, constraints };
+}
+
+/**
+ * Per-position declared constraints of a symbol's type parameters, in order.
+ * `undefined` at a position means that parameter is unconstrained. Returns
+ * undefined when the symbol declares no type parameters.
+ */
+function collectConstraints(
+  symbol: ts.Symbol,
+  checker: ts.TypeChecker,
+): (ts.Type | undefined)[] | undefined {
+  const decl = symbol
+    .getDeclarations()
+    ?.find((d) => (d as { typeParameters?: unknown }).typeParameters !== undefined);
+  const tps = (decl as { typeParameters?: ts.NodeArray<ts.TypeParameterDeclaration> } | undefined)
+    ?.typeParameters;
+  if (!tps || tps.length === 0) return undefined;
+
+  return tps.map((tp) => {
+    if (!tp.constraint) return undefined;
+    return checker.getTypeFromTypeNode(tp.constraint);
+  });
 }
 
 function addFunction(
@@ -265,7 +303,51 @@ function refineOne(finding: Finding, cmp: Comparison): Finding | null {
     return refineInvariant(finding, cmp.checker, oldA, newA);
   }
 
+  if (finding.code === "generics.constraintChanged") {
+    const m = TYPEPARAM_PATH.exec(finding.path);
+    if (!m) return finding;
+    const owner = m[1]!;
+    const index = Number(m[2]);
+    const oldC = cmp.oldConstraints.get(owner)?.[index];
+    const newC = cmp.newConstraints.get(owner)?.[index];
+    return refineConstraint(finding, cmp.checker, oldC, newC);
+  }
+
   return finding;
+}
+
+/**
+ * A type-parameter constraint is an upper bound on what callers may instantiate
+ * the parameter with, so relaxing/removing it is safe (more instantiations
+ * allowed) while tightening/adding it is breaking. Backward compatibility holds
+ * iff the old bound is assignable to the new one.
+ */
+function refineConstraint(
+  finding: Finding,
+  checker: ts.TypeChecker,
+  oldC: ts.Type | undefined,
+  newC: ts.Type | undefined,
+): Finding | null {
+  const relaxed = (): Finding => ({
+    ...finding,
+    level: "minor",
+    code: "generics.constraintRelaxed",
+    message: finding.message.replace("constraint changed", "constraint relaxed") +
+      " (accepts at least all previously-valid type arguments).",
+  });
+
+  // Removing a constraint entirely is an unambiguous relaxation.
+  if (oldC && !newC) return relaxed();
+  // Adding a constraint where there was none narrows what's allowed → breaking.
+  if (!oldC && newC) return finding;
+  // Both unconstrained: nothing meaningful changed.
+  if (!oldC && !newC) return null;
+
+  const oldToNew = checker.isTypeAssignableTo(oldC!, newC!);
+  const newToOld = checker.isTypeAssignableTo(newC!, oldC!);
+  if (oldToNew && newToOld) return null; // equivalent constraints
+  if (oldToNew) return relaxed(); // new bound accepts everything the old did → safe
+  return finding; // tightened or incompatible → stays major
 }
 
 /** Covariant refinement (return types, readonly properties): narrowing is safe. */

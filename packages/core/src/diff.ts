@@ -121,32 +121,95 @@ function renderTypeParam(tp: TypeParameter): string {
 }
 
 function diffTypeParameters(
-  path: string,
+  owner: string,
   before: TypeParameter[],
   after: TypeParameter[],
   findings: Finding[],
 ): void {
-  const beforeStr = before.map(renderTypeParam).join(", ");
-  const afterStr = after.map(renderTypeParam).join(", ");
-  if (beforeStr === afterStr) return;
+  const max = Math.max(before.length, after.length);
+  for (let i = 0; i < max; i++) {
+    const b = before[i];
+    const a = after[i];
+    const path = `${owner}.typeParams[${i}]`;
 
-  if (after.length > before.length && after.slice(before.length).every((tp) => tp.default)) {
-    // Added type parameters all have defaults -> existing usages still compile.
+    if (b && !a) {
+      findings.push({
+        level: "major",
+        code: "generics.typeParamRemoved",
+        path,
+        message: `Type parameter '${b.name}' was removed.`,
+      });
+      continue;
+    }
+    if (!b && a) {
+      if (a.default) {
+        // Added with a default -> existing usages still compile.
+        findings.push({
+          level: "minor",
+          code: "generics.typeParamAdded",
+          path,
+          message: `New type parameter '${renderTypeParam(a)}' was added with a default.`,
+        });
+      } else {
+        findings.push({
+          level: "major",
+          code: "generics.typeParamAddedRequired",
+          path,
+          message: `New required type parameter '${renderTypeParam(a)}' was added.`,
+        });
+      }
+      continue;
+    }
+    if (b && a) diffOneTypeParameter(path, b, a, findings);
+  }
+}
+
+function diffOneTypeParameter(
+  path: string,
+  before: TypeParameter,
+  after: TypeParameter,
+  findings: Finding[],
+): void {
+  // A type parameter's constraint is an upper bound on what callers may
+  // instantiate it with. Relaxing/removing it is safe (widening), tightening/
+  // adding it is breaking (narrowing). We can't tell direction from strings, so
+  // report a conservative `major` here; assignability refinement decides.
+  if (before.constraint !== after.constraint) {
     findings.push({
-      level: "minor",
-      code: "generics.typeParamAdded",
+      level: "major",
+      code: "generics.constraintChanged",
       path,
-      message: `Type parameters added with defaults: <${afterStr}>.`,
+      message:
+        `Type parameter '${after.name}' constraint changed from ` +
+        `'${before.constraint ?? "(unconstrained)"}' to '${after.constraint ?? "(unconstrained)"}'.`,
     });
-    return;
   }
 
-  findings.push({
-    level: "major",
-    code: "generics.changed",
-    path,
-    message: `Type parameters changed from <${beforeStr}> to <${afterStr}>.`,
-  });
+  if (before.default !== after.default) {
+    if (!before.default && after.default) {
+      findings.push({
+        level: "minor",
+        code: "generics.defaultAdded",
+        path,
+        message: `Type parameter '${after.name}' gained a default of '${after.default}'.`,
+      });
+    } else if (before.default && !after.default) {
+      findings.push({
+        level: "major",
+        code: "generics.defaultRemoved",
+        path,
+        message: `Type parameter '${after.name}' lost its default of '${before.default}'.`,
+      });
+    } else {
+      findings.push({
+        level: "major",
+        code: "generics.defaultChanged",
+        path,
+        message: `Type parameter '${after.name}' default changed from '${before.default}' to '${after.default}'.`,
+      });
+    }
+  }
+  // A name-only change is positional/cosmetic and not breaking — no finding.
 }
 
 // ---------------------------------------------------------------------------

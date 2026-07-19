@@ -1,0 +1,1 @@
+{ "level": "major", "codes": ["generics.typeParamAddedRequired"], "description": "Adding a required type parameter breaks existing references that supply fewer arguments." }
