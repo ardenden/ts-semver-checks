@@ -5,8 +5,17 @@ export interface Finding {
   level: SemverLevel;
   /** Stable machine-readable code, e.g. `export.removed`, `param.typeChanged`. */
   code: string;
-  /** Dotted path to the affected surface location, e.g. `parseConfig.params[0]`. */
+  /**
+   * Dotted path to the affected surface location, e.g. `parseConfig.params[0]`.
+   * Always relative to its entry point — never prefixed with the subpath — so
+   * assignability refinement can resolve it against the compiler's symbols.
+   */
   path: string;
+  /**
+   * The package `exports` subpath this finding came from, e.g. `./utils`.
+   * Omitted for the root entry point and for single-entry comparisons.
+   */
+  entryPoint?: string;
   /** Human-readable one-line explanation. */
   message: string;
 }
@@ -22,11 +31,17 @@ export function classify(findings: readonly Finding[]): SemverLevel {
   return level;
 }
 
-/** Sort findings most-severe first, then by path for stable output. */
+/**
+ * Sort findings most-severe first, then grouped by entry point (root first),
+ * then by path for stable output.
+ */
 export function sortFindings(findings: Finding[]): Finding[] {
   return [...findings].sort((a, b) => {
     const byLevel = ORDER[b.level] - ORDER[a.level];
     if (byLevel !== 0) return byLevel;
+    // Root/unlabelled entry point sorts before named subpaths.
+    const byEntry = (a.entryPoint ?? "").localeCompare(b.entryPoint ?? "");
+    if (byEntry !== 0) return byEntry;
     return a.path.localeCompare(b.path);
   });
 }

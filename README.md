@@ -61,8 +61,8 @@ ts-semver-checks <before-entry> <after-entry>
   --no-color         Disable ANSI colors (auto-off when not a TTY).
 ```
 
-**Baseline mode** reads the package name and type entry from your `package.json` and
-diffs it against your local build. This is the "did I break my public API?" workflow:
+**Baseline mode** reads the package name and type entries from your `package.json` and
+diffs them against your local build. This is the "did I break my public API?" workflow:
 
 ```bash
 # vs the latest version published on npm:
@@ -92,6 +92,34 @@ ts-semver-checks ./baseline/index.d.ts ./dist/index.d.ts --expect minor
 
 Exit codes: `0` OK / within `--expect`, `1` required bump exceeds `--expect`, `2` usage
 error, `3` baseline fetch/resolution error.
+
+### Multiple entry points
+
+A package's public surface is the union of **every** subpath it exports, so baseline mode
+checks all of them — not just the root. Given:
+
+```jsonc
+{
+  "exports": {
+    ".":            { "types": "./dist/index.d.ts" },
+    "./utils":      { "types": "./dist/utils.d.ts" },
+    "./package.json": "./package.json"
+  }
+}
+```
+
+both `.` and `./utils` are checked, and findings outside the root are attributed to their
+subpath:
+
+```
+MAJOR  New required parameter 'mode: number' was added.
+       param.addedRequired @ ./utils → helper.params[1]
+```
+
+Adding a subpath is **minor** (`entryPoint.added`); removing one is **major**
+(`entryPoint.removed`). Untyped exports (like `./package.json`) and wildcard patterns
+(`./*`, which can't be enumerated statically) are skipped. Passing `--local-entry` or
+`--baseline-entry` targets a single file and opts out of this traversal.
 
 ## Use in CI (GitHub Actions)
 
@@ -152,11 +180,12 @@ Currently detected (see [`packages/core/src/diff.ts`](packages/core/src/diff.ts)
   parameter type **narrowed**, return/readonly-property type **widened**, optional→required,
   removed/changed interface member, new required interface member/method, removed/changed
   enum member, generic-constraint **tightened**/added, type-parameter default removed/changed,
-  required type parameter added, type parameter removed, class made abstract, removed constructor.
+  required type parameter added, type parameter removed, class made abstract, removed
+  constructor, removed `exports` entry point.
 - **minor:** new export, new optional parameter/property, required→optional, parameter
   type **widened**, return/readonly-property type **narrowed**, generic-constraint
   **relaxed**/removed, type-parameter default added, type parameter added with a default,
-  new class member, new enum member, added overload.
+  new class member, new enum member, added overload, new `exports` entry point.
 - **patch:** no surface change (including type changes that are actually equivalent, e.g.
   `string[]` ↔ `Array<string>`, on parameters, returns, properties, type aliases, or
   generic constraints).
@@ -221,6 +250,6 @@ push and PR, on both Ubuntu and Windows.
   mutable properties/aliases; covariant narrow/widen for readonly properties).
 - ~~Extend assignability to generic/type-parameter constraints~~ ✅ done (relax/tighten,
   add/remove constraint, defaults, add/remove type parameter).
-- Multi-entry-point / `package.json` `exports` map traversal (multiple subpaths).
+- ~~Multi-entry-point / `package.json` `exports` map traversal (multiple subpaths)~~ ✅ done.
 - Monorepo multi-package orchestration.
 - Recognize type-parameter renames as non-breaking (alpha-normalize signatures).

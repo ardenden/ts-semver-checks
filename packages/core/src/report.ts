@@ -40,7 +40,10 @@ export function renderReport(result: CheckResult, options: RenderOptions = {}): 
   for (const f of result.findings) {
     const badge = paint(f.level, LEVEL_LABEL[f.level].padEnd(5));
     lines.push(`${badge}  ${f.message}`);
-    lines.push(`       ${paint("dim", `${f.code} @ ${f.path}`)}`);
+    // Qualify the location with the exports subpath when there is one, so a
+    // finding in "./utils" isn't mistaken for one in the root entry point.
+    const location = f.entryPoint ? `${f.entryPoint} → ${f.path}` : f.path;
+    lines.push(`       ${paint("dim", `${f.code} @ ${location}`)}`);
   }
 
   lines.push("");

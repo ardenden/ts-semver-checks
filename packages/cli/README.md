@@ -19,6 +19,9 @@ ts-semver-checks --baseline git:<ref>          # compare local build vs a git ta
 ts-semver-checks <before-entry> <after-entry>  # compare two entry files
 ```
 
+Baseline mode checks **every typed subpath** in your `package.json` `exports` (`.`,
+`./utils`, ...), not just the root, and attributes findings to the subpath they came from.
+
 Key flags: `--expect <major|minor|patch>` (CI gate), `--json`, `--package-dir`,
 `--local-entry`, `--baseline-entry`. Exit codes: `0` ok, `1` bump exceeds `--expect`,
 `2` usage, `3` baseline fetch/resolution error.

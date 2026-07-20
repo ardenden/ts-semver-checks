@@ -12,6 +12,17 @@ export interface ResolvedPackage {
   typesEntry: string;
 }
 
+export interface ResolvedPackageEntries {
+  /** Package name from package.json. */
+  name: string;
+  /** Package version from package.json (may be undefined for private/local). */
+  version: string | undefined;
+  /** Absolute path to the package directory. */
+  dir: string;
+  /** Exports subpath (`.`, `./utils`, ...) -> absolute path to its type entry. */
+  entries: Map<string, string>;
+}
+
 interface PackageJson {
   name?: string;
   version?: string;
@@ -33,17 +44,7 @@ export class ResolveError extends Error {}
  */
 export function resolvePackage(dir: string, entryOverride?: string): ResolvedPackage {
   const packageDir = path.resolve(dir);
-  const pkgPath = path.join(packageDir, "package.json");
-  if (!fs.existsSync(pkgPath)) {
-    throw new ResolveError(`No package.json found in ${packageDir}`);
-  }
-
-  let pkg: PackageJson;
-  try {
-    pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")) as PackageJson;
-  } catch (err) {
-    throw new ResolveError(`Could not parse ${pkgPath}: ${(err as Error).message}`);
-  }
+  const pkg = readPackageJson(packageDir);
 
   if (!pkg.name) {
     throw new ResolveError(`package.json in ${packageDir} has no "name" field.`);
@@ -76,6 +77,71 @@ function resolveTypesEntry(dir: string, pkg: PackageJson): string | undefined {
 
   const fallback = path.join(dir, "index.d.ts");
   return fs.existsSync(fallback) ? fallback : undefined;
+}
+
+/**
+ * Every typed entry point a package exposes, keyed by its `exports` subpath
+ * (`.`, `./utils`, ...). A package's public surface is the union of all of
+ * them, so checking only the root would silently miss breaking changes in the
+ * rest.
+ *
+ * Subpaths that resolve to no type declarations are skipped rather than
+ * reported — `"./package.json": "./package.json"` is a common, untyped export.
+ * Wildcard patterns (`./*`) can't be enumerated statically and are skipped too.
+ * Falls back to a single `.` entry for packages with no `exports` map.
+ */
+export function resolvePackageEntries(dir: string): ResolvedPackageEntries {
+  const packageDir = path.resolve(dir);
+  const pkg = readPackageJson(packageDir);
+
+  if (!pkg.name) {
+    throw new ResolveError(`package.json in ${packageDir} has no "name" field.`);
+  }
+
+  const entries = new Map<string, string>();
+  const exportsMap = pkg.exports;
+
+  if (exportsMap && typeof exportsMap === "object") {
+    const record = exportsMap as Record<string, unknown>;
+    const subpathKeys = Object.keys(record).filter((k) => k.startsWith("."));
+
+    for (const key of subpathKeys) {
+      if (key.includes("*")) continue; // unenumerable pattern
+      const rel = findTypesInExport(record[key]);
+      if (!rel) continue; // untyped export (e.g. "./package.json")
+      const abs = path.resolve(packageDir, rel);
+      if (fs.existsSync(abs)) entries.set(key, abs);
+    }
+  }
+
+  // No exports map (or none of its subpaths were typed): fall back to the
+  // single root entry, matching resolvePackage's behavior.
+  if (entries.size === 0) {
+    const rootEntry = resolveTypesEntry(packageDir, pkg);
+    if (rootEntry && fs.existsSync(rootEntry)) entries.set(".", rootEntry);
+  }
+
+  if (entries.size === 0) {
+    throw new ResolveError(
+      `Could not find any type entry point for '${pkg.name}' in ${packageDir}. ` +
+        `Add a "types" field to package.json, or pass --local-entry <path>. ` +
+        `If this is your local package, build it first (its .d.ts must exist).`,
+    );
+  }
+
+  return { name: pkg.name, version: pkg.version, dir: packageDir, entries };
+}
+
+function readPackageJson(packageDir: string): PackageJson {
+  const pkgPath = path.join(packageDir, "package.json");
+  if (!fs.existsSync(pkgPath)) {
+    throw new ResolveError(`No package.json found in ${packageDir}`);
+  }
+  try {
+    return JSON.parse(fs.readFileSync(pkgPath, "utf8")) as PackageJson;
+  } catch (err) {
+    throw new ResolveError(`Could not parse ${pkgPath}: ${(err as Error).message}`);
+  }
 }
 
 /** Pull the "." subpath out of an exports map (or return the value if it's already a leaf). */

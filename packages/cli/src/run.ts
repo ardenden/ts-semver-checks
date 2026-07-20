@@ -2,12 +2,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import {
   checkEntries,
+  checkEntryPoints,
   renderReport,
   type CheckResult,
+  type EntryPointPair,
   type SemverLevel,
 } from "ts-semver-checks-core";
 import { ArgError, HELP_TEXT, parseArgs, type ParsedArgs } from "./args.js";
-import { resolvePackage, ResolveError } from "./resolve.js";
+import { resolvePackage, resolvePackageEntries, ResolveError } from "./resolve.js";
 import { BaselineError, fetchBaselinePackage, type FetchedBaseline } from "./baseline.js";
 import { GitBaselineError, fetchGitBaseline, isGitBaselineSpec, parseGitRef } from "./gitBaseline.js";
 
@@ -81,9 +83,22 @@ function runBaseline(args: ParsedArgs, io: RunIO): number {
   const packageDir = path.resolve(args.packageDir ?? process.cwd());
   const isGit = isGitBaselineSpec(spec);
 
-  let local;
+  // An explicit entry override targets one specific file, so it opts out of
+  // multi-subpath traversal; otherwise check every typed `exports` subpath.
+  const multiEntry = !args.localEntry && !args.baselineEntry;
+
+  let packageName: string;
+  let localEntries: Map<string, string> | undefined;
+  let local: ReturnType<typeof resolvePackage> | undefined;
   try {
-    local = resolvePackage(packageDir, args.localEntry);
+    if (multiEntry) {
+      const resolved = resolvePackageEntries(packageDir);
+      packageName = resolved.name;
+      localEntries = resolved.entries;
+    } else {
+      local = resolvePackage(packageDir, args.localEntry);
+      packageName = local.name;
+    }
   } catch (err) {
     if (err instanceof ResolveError) {
       io.stderr(`${err.message}\n`);
@@ -92,7 +107,9 @@ function runBaseline(args: ParsedArgs, io: RunIO): number {
     throw err;
   }
 
-  const localLabel = path.relative(process.cwd(), local.typesEntry) || local.typesEntry;
+  const localLabel = localEntries
+    ? describeEntries(localEntries)
+    : path.relative(process.cwd(), local!.typesEntry) || local!.typesEntry;
 
   let fetched: FetchedBaseline;
   if (isGit) {
@@ -108,9 +125,9 @@ function runBaseline(args: ParsedArgs, io: RunIO): number {
       throw err;
     }
   } else {
-    io.stderr(`Comparing ${local.name}@${spec} (npm)  →  local ${localLabel}\n`);
+    io.stderr(`Comparing ${packageName}@${spec} (npm)  →  local ${localLabel}\n`);
     try {
-      fetched = fetchBaselinePackage(local.name, spec, (m) => io.stderr(`${m}\n`));
+      fetched = fetchBaselinePackage(packageName, spec, (m) => io.stderr(`${m}\n`));
     } catch (err) {
       if (err instanceof BaselineError) {
         io.stderr(`${err.message}\n`);
@@ -121,6 +138,27 @@ function runBaseline(args: ParsedArgs, io: RunIO): number {
   }
 
   try {
+    const source = isGit ? "git baseline" : "published baseline";
+
+    if (localEntries) {
+      let baselineEntries: Map<string, string>;
+      try {
+        baselineEntries = resolvePackageEntries(fetched.dir).entries;
+      } catch (err) {
+        if (err instanceof ResolveError) {
+          io.stderr(`Could not read the ${source}: ${err.message}\n`);
+          return 3;
+        }
+        throw err;
+      }
+
+      const pairs = buildEntryPointPairs(baselineEntries, localEntries);
+      if (pairs.length > 1) {
+        io.stderr(`Checking ${pairs.length} entry points…\n`);
+      }
+      return report(checkEntryPoints(pairs), args, io);
+    }
+
     let baselineEntry: string;
     try {
       // args.baselineEntry is relative to the fetched/checked-out package dir
@@ -131,17 +169,40 @@ function runBaseline(args: ParsedArgs, io: RunIO): number {
       baselineEntry = resolvePackage(fetched.dir, override).typesEntry;
     } catch (err) {
       if (err instanceof ResolveError) {
-        const source = isGit ? "git baseline" : "published baseline";
         io.stderr(`Could not read the ${source}: ${err.message}\n`);
         return 3;
       }
       throw err;
     }
 
-    return report(checkEntries(baselineEntry, local.typesEntry), args, io);
+    return report(checkEntries(baselineEntry, local!.typesEntry), args, io);
   } finally {
     fetched.cleanup();
   }
+}
+
+/** Union of both versions' subpaths, root first then alphabetical. */
+function buildEntryPointPairs(
+  baseline: Map<string, string>,
+  local: Map<string, string>,
+): EntryPointPair[] {
+  const subpaths = [...new Set([...baseline.keys(), ...local.keys()])].sort((a, b) => {
+    if (a === ".") return -1;
+    if (b === ".") return 1;
+    return a.localeCompare(b);
+  });
+
+  return subpaths.map((subpath) => ({
+    subpath,
+    oldEntry: baseline.get(subpath),
+    newEntry: local.get(subpath),
+  }));
+}
+
+function describeEntries(entries: Map<string, string>): string {
+  const root = entries.get(".");
+  const label = root ? path.relative(process.cwd(), root) || root : `${entries.size} entry points`;
+  return entries.size > 1 ? `${label} (+${entries.size - 1} more entry points)` : label;
 }
 
 // ---------------------------------------------------------------------------

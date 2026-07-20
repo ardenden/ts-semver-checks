@@ -56,3 +56,59 @@ export function checkEntries(
   findings = sortFindings(findings);
   return { level: classify(findings), findings };
 }
+
+/**
+ * One `package.json` `exports` subpath to compare. A missing side means the
+ * entry point only exists in the other version.
+ */
+export interface EntryPointPair {
+  /** The exports subpath, e.g. `.` or `./utils`. */
+  subpath: string;
+  /** Baseline entry file; omit if this subpath is newly added. */
+  oldEntry?: string;
+  /** Candidate entry file; omit if this subpath was removed. */
+  newEntry?: string;
+}
+
+/**
+ * Check every exported entry point of a package and merge the results.
+ *
+ * Packages that expose multiple `exports` subpaths (`.`, `./utils`, ...) have a
+ * public surface per subpath; checking only the root would silently miss
+ * breaking changes in the others. Findings from non-root subpaths are tagged
+ * with `entryPoint` so they can be attributed; adding a subpath is `minor` and
+ * removing one is `major`.
+ */
+export function checkEntryPoints(
+  pairs: readonly EntryPointPair[],
+  options: CheckEntriesOptions = {},
+): CheckResult {
+  const all: Finding[] = [];
+
+  for (const pair of pairs) {
+    const label = pair.subpath === "." ? undefined : pair.subpath;
+
+    if (pair.oldEntry && pair.newEntry) {
+      for (const finding of checkEntries(pair.oldEntry, pair.newEntry, options).findings) {
+        all.push(label ? { ...finding, entryPoint: label } : finding);
+      }
+    } else if (pair.oldEntry && !pair.newEntry) {
+      all.push({
+        level: "major",
+        code: "entryPoint.removed",
+        path: pair.subpath,
+        message: `Entry point '${pair.subpath}' was removed from the package exports.`,
+      });
+    } else if (!pair.oldEntry && pair.newEntry) {
+      all.push({
+        level: "minor",
+        code: "entryPoint.added",
+        path: pair.subpath,
+        message: `New entry point '${pair.subpath}' was added to the package exports.`,
+      });
+    }
+  }
+
+  const findings = sortFindings(all);
+  return { level: classify(findings), findings };
+}

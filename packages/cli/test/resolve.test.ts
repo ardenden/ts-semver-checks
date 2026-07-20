@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { resolvePackage, ResolveError } from "../src/resolve.js";
+import { resolvePackage, resolvePackageEntries, ResolveError } from "../src/resolve.js";
 
 const tmpDirs: string[] = [];
 
@@ -92,5 +92,87 @@ describe("resolvePackage", () => {
   it("throws when there is no name", () => {
     const dir = makePackage({ version: "1.0.0", types: "index.d.ts" }, { "index.d.ts": "" });
     expect(() => resolvePackage(dir)).toThrow(/no "name"/);
+  });
+});
+
+describe("resolvePackageEntries", () => {
+  it("enumerates every typed exports subpath", () => {
+    const dir = makePackage(
+      {
+        name: "multi",
+        exports: {
+          ".": { types: "./dist/index.d.ts", import: "./dist/index.js" },
+          "./utils": { types: "./dist/utils.d.ts", import: "./dist/utils.js" },
+          "./client": { types: "./dist/client.d.ts", import: "./dist/client.js" },
+        },
+      },
+      {
+        "dist/index.d.ts": "export {};",
+        "dist/utils.d.ts": "export {};",
+        "dist/client.d.ts": "export {};",
+      },
+    );
+    const { entries } = resolvePackageEntries(dir);
+    expect([...entries.keys()].sort()).toEqual([".", "./client", "./utils"]);
+  });
+
+  it("skips untyped exports like ./package.json", () => {
+    const dir = makePackage(
+      {
+        name: "with-pkg-json",
+        exports: {
+          ".": { types: "./index.d.ts" },
+          "./package.json": "./package.json",
+        },
+      },
+      { "index.d.ts": "export {};" },
+    );
+    const { entries } = resolvePackageEntries(dir);
+    expect([...entries.keys()]).toEqual(["."]);
+  });
+
+  it("skips wildcard subpath patterns", () => {
+    const dir = makePackage(
+      {
+        name: "wildcards",
+        exports: {
+          ".": { types: "./index.d.ts" },
+          "./*": { types: "./dist/*.d.ts" },
+        },
+      },
+      { "index.d.ts": "export {};" },
+    );
+    const { entries } = resolvePackageEntries(dir);
+    expect([...entries.keys()]).toEqual(["."]);
+  });
+
+  it("skips subpaths whose declared types file is missing", () => {
+    const dir = makePackage(
+      {
+        name: "partial",
+        exports: {
+          ".": { types: "./index.d.ts" },
+          "./ghost": { types: "./dist/ghost.d.ts" },
+        },
+      },
+      { "index.d.ts": "export {};" },
+    );
+    const { entries } = resolvePackageEntries(dir);
+    expect([...entries.keys()]).toEqual(["."]);
+  });
+
+  it("falls back to a single root entry when there is no exports map", () => {
+    const dir = makePackage(
+      { name: "legacy", types: "index.d.ts" },
+      { "index.d.ts": "export {};" },
+    );
+    const { entries } = resolvePackageEntries(dir);
+    expect([...entries.keys()]).toEqual(["."]);
+    expect(path.basename(entries.get(".")!)).toBe("index.d.ts");
+  });
+
+  it("throws when no entry point can be resolved at all", () => {
+    const dir = makePackage({ name: "empty-pkg" });
+    expect(() => resolvePackageEntries(dir)).toThrow(ResolveError);
   });
 });
