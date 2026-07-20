@@ -218,7 +218,28 @@ Currently detected (see [`packages/core/src/diff.ts`](packages/core/src/diff.ts)
   new class member, new enum member, added overload, new `exports` entry point.
 - **patch:** no surface change (including type changes that are actually equivalent, e.g.
   `string[]` ↔ `Array<string>`, on parameters, returns, properties, type aliases, or
-  generic constraints).
+  generic constraints — and type-parameter renames, see below).
+
+### Type-parameter renames
+
+A type parameter's name is a local binding: callers instantiate it positionally
+(`map<string, number>(...)`) and can't refer to it by name. Renaming `<T, U>` to
+`<TIn, TOut>` is therefore invisible to consumers, and reports as **patch**.
+
+Type parameters are alpha-normalized to positional placeholders before diffing, so a
+rename compares equal while a change in *which position* a type is used at does not:
+
+```ts
+// patch — pure rename
+function map<T, U>(items: T[], fn: (item: T) => U): U[];
+function map<TIn, TOut>(items: TIn[], fn: (item: TIn) => TOut): TOut[];
+
+// major — the arguments now use different type parameters
+function g<T, U>(a: T, b: U): void;
+function g<T, U>(a: U, b: T): void;
+```
+
+Messages still show the names you declared, not the internal placeholders.
 
 ### Assignability
 
@@ -263,7 +284,7 @@ pnpm test              # vitest, runs the fixture corpus
 
 Each directory under [`packages/core/test/fixtures`](packages/core/test/fixtures) is a
 `before.ts` + `after.ts` pair plus `expected.json` (`{ level, codes }`). Adding a rule
-means adding a fixture. The harness discovers them automatically — currently 39 fixtures
+means adding a fixture. The harness discovers them automatically — currently 43 fixtures
 covering exports, parameters, properties, enums, classes, generic constraints/defaults,
 CommonJS `export =`, and assignability-based widening/narrowing/equivalence.
 
@@ -282,4 +303,4 @@ push and PR, on both Ubuntu and Windows.
   add/remove constraint, defaults, add/remove type parameter).
 - ~~Multi-entry-point / `package.json` `exports` map traversal (multiple subpaths)~~ ✅ done.
 - ~~Monorepo multi-package orchestration (`--workspace`)~~ ✅ done.
-- Recognize type-parameter renames as non-breaking (alpha-normalize signatures).
+- ~~Recognize type-parameter renames as non-breaking (alpha-normalize signatures)~~ ✅ done.

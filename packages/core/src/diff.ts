@@ -103,9 +103,13 @@ function diffSymbol(
 // ---------------------------------------------------------------------------
 
 function renderSignature(sig: CallSignature): string {
+  // Type parameters are rendered positionally, not by name: their names are
+  // local bindings that consumers can't reference, so a rename must not make
+  // two otherwise-identical signatures compare as different. (Their types are
+  // already alpha-normalized during extraction.)
   const tp =
     sig.typeParameters.length > 0
-      ? `<${sig.typeParameters.map(renderTypeParam).join(", ")}>`
+      ? `<${sig.typeParameters.map(renderTypeParamPositional).join(", ")}>`
       : "";
   const params = sig.parameters
     .map((p) => `${p.rest ? "..." : ""}${p.name}${p.optional ? "?" : ""}: ${p.type}`)
@@ -124,8 +128,42 @@ function abbreviateType(type: string, max = 80): string {
   return collapsed.length <= max ? collapsed : `${collapsed.slice(0, max - 1)}…`;
 }
 
+/**
+ * Turn the positional type-parameter placeholders introduced by
+ * alpha-normalization back into the names the author actually wrote, so
+ * messages read `'T'` rather than `'«s0»'`. Falls back to a positional label
+ * when the parameter no longer exists (e.g. it was removed).
+ */
+function displayType(
+  type: string,
+  signatureParams?: readonly TypeParameter[],
+  containerParams?: readonly TypeParameter[],
+): string {
+  return type.replace(/«([sc])(\d+)»/g, (_match, kind: string, index: string) => {
+    const list = kind === "s" ? signatureParams : containerParams;
+    return list?.[Number(index)]?.name ?? `T${index}`;
+  });
+}
+
+/** Display helper: resolve placeholders, then shorten. */
+function forMessage(
+  type: string,
+  signatureParams?: readonly TypeParameter[],
+  containerParams?: readonly TypeParameter[],
+): string {
+  return abbreviateType(displayType(type, signatureParams, containerParams));
+}
+
 function renderTypeParam(tp: TypeParameter): string {
   let s = tp.name;
+  if (tp.constraint) s += ` extends ${tp.constraint}`;
+  if (tp.default) s += ` = ${tp.default}`;
+  return s;
+}
+
+/** Like {@link renderTypeParam} but name-independent, for comparison purposes. */
+function renderTypeParamPositional(tp: TypeParameter, index: number): string {
+  let s = `#${index}`;
   if (tp.constraint) s += ` extends ${tp.constraint}`;
   if (tp.default) s += ` = ${tp.default}`;
   return s;
@@ -136,6 +174,7 @@ function diffTypeParameters(
   before: TypeParameter[],
   after: TypeParameter[],
   findings: Finding[],
+  containerParams?: readonly TypeParameter[],
 ): void {
   const max = Math.max(before.length, after.length);
   for (let i = 0; i < max; i++) {
@@ -171,7 +210,7 @@ function diffTypeParameters(
       }
       continue;
     }
-    if (b && a) diffOneTypeParameter(path, b, a, findings);
+    if (b && a) diffOneTypeParameter(path, b, a, findings, after, containerParams);
   }
 }
 
@@ -180,7 +219,11 @@ function diffOneTypeParameter(
   before: TypeParameter,
   after: TypeParameter,
   findings: Finding[],
+  siblingParams?: readonly TypeParameter[],
+  containerParams?: readonly TypeParameter[],
 ): void {
+  const show = (t: string | undefined, fallback: string) =>
+    t === undefined ? fallback : forMessage(t, siblingParams, containerParams);
   // A type parameter's constraint is an upper bound on what callers may
   // instantiate it with. Relaxing/removing it is safe (widening), tightening/
   // adding it is breaking (narrowing). We can't tell direction from strings, so
@@ -192,7 +235,7 @@ function diffOneTypeParameter(
       path,
       message:
         `Type parameter '${after.name}' constraint changed from ` +
-        `'${before.constraint ?? "(unconstrained)"}' to '${after.constraint ?? "(unconstrained)"}'.`,
+        `'${show(before.constraint, "(unconstrained)")}' to '${show(after.constraint, "(unconstrained)")}'.`,
     });
   }
 
@@ -202,21 +245,21 @@ function diffOneTypeParameter(
         level: "minor",
         code: "generics.defaultAdded",
         path,
-        message: `Type parameter '${after.name}' gained a default of '${after.default}'.`,
+        message: `Type parameter '${after.name}' gained a default of '${show(after.default, "")}'.`,
       });
     } else if (before.default && !after.default) {
       findings.push({
         level: "major",
         code: "generics.defaultRemoved",
         path,
-        message: `Type parameter '${after.name}' lost its default of '${before.default}'.`,
+        message: `Type parameter '${after.name}' lost its default of '${show(before.default, "")}'.`,
       });
     } else {
       findings.push({
         level: "major",
         code: "generics.defaultChanged",
         path,
-        message: `Type parameter '${after.name}' default changed from '${before.default}' to '${after.default}'.`,
+        message: `Type parameter '${after.name}' default changed from '${show(before.default, "")}' to '${show(after.default, "")}'.`,
       });
     }
   }
@@ -276,8 +319,11 @@ function diffSignature(
   after: CallSignature,
   findings: Finding[],
   role: "param" | "ctor",
+  containerParams?: readonly TypeParameter[],
 ): void {
-  diffTypeParameters(path, before.typeParameters, after.typeParameters, findings);
+  diffTypeParameters(path, before.typeParameters, after.typeParameters, findings, containerParams);
+  // Messages describe the change in terms of the new version's declared names.
+  const tps = after.typeParameters;
 
   const max = Math.max(before.parameters.length, after.parameters.length);
   for (let i = 0; i < max; i++) {
@@ -300,19 +346,19 @@ function diffSignature(
           level: "minor",
           code: "param.addedOptional",
           path: paramPath,
-          message: `New optional parameter '${a.name}: ${abbreviateType(a.type)}' was added.`,
+          message: `New optional parameter '${a.name}: ${forMessage(a.type, tps, containerParams)}' was added.`,
         });
       } else {
         findings.push({
           level: "major",
           code: "param.addedRequired",
           path: paramPath,
-          message: `New required parameter '${a.name}: ${abbreviateType(a.type)}' was added.`,
+          message: `New required parameter '${a.name}: ${forMessage(a.type, tps, containerParams)}' was added.`,
         });
       }
       continue;
     }
-    if (b && a) diffParameter(paramPath, b, a, findings);
+    if (b && a) diffParameter(paramPath, b, a, findings, tps, containerParams);
   }
 
   if (before.returnType !== after.returnType) {
@@ -320,18 +366,28 @@ function diffSignature(
       level: "major",
       code: "returnType.changed",
       path: `${path}.returnType`,
-      message: `Return type changed from '${abbreviateType(before.returnType)}' to '${abbreviateType(after.returnType)}'.`,
+      message: `Return type changed from '${forMessage(before.returnType, tps, containerParams)}' to '${forMessage(after.returnType, tps, containerParams)}'.`,
     });
   }
 }
 
-function diffParameter(path: string, before: Parameter, after: Parameter, findings: Finding[]): void {
+function diffParameter(
+  path: string,
+  before: Parameter,
+  after: Parameter,
+  findings: Finding[],
+  signatureParams?: readonly TypeParameter[],
+  containerParams?: readonly TypeParameter[],
+): void {
   if (before.type !== after.type) {
     findings.push({
       level: "major",
       code: "param.typeChanged",
       path,
-      message: `Parameter '${before.name}' type changed from '${abbreviateType(before.type)}' to '${abbreviateType(after.type)}'.`,
+      message:
+        `Parameter '${before.name}' type changed from ` +
+        `'${forMessage(before.type, signatureParams, containerParams)}' to ` +
+        `'${forMessage(after.type, signatureParams, containerParams)}'.`,
     });
   }
   if (before.optional && !after.optional) {
@@ -361,15 +417,17 @@ function diffInterface(
   after: InterfaceSymbol,
   findings: Finding[],
 ): void {
-  diffTypeParameters(name, before.typeParameters, after.typeParameters, findings);
+  const tps = after.typeParameters;
+  diffTypeParameters(name, before.typeParameters, after.typeParameters, findings, tps);
   // For interfaces, adding a required member is breaking (implementers/object
   // literals must now provide it).
-  diffProperties(name, before.properties, after.properties, findings, "interface");
-  diffMethods(name, before.methods, after.methods, findings, "interface");
+  diffProperties(name, before.properties, after.properties, findings, "interface", tps);
+  diffMethods(name, before.methods, after.methods, findings, "interface", tps);
 }
 
 function diffClass(name: string, before: ClassSymbol, after: ClassSymbol, findings: Finding[]): void {
-  diffTypeParameters(name, before.typeParameters, after.typeParameters, findings);
+  const tps = after.typeParameters;
+  diffTypeParameters(name, before.typeParameters, after.typeParameters, findings, tps);
 
   if (!before.abstract && after.abstract) {
     findings.push({
@@ -389,10 +447,10 @@ function diffClass(name: string, before: ClassSymbol, after: ClassSymbol, findin
 
   // For classes, adding a public member is non-breaking (consumers don't implement
   // classes structurally in practice); removing/changing is breaking.
-  diffProperties(name, before.properties, after.properties, findings, "class");
-  diffMethods(name, before.methods, after.methods, findings, "class");
+  diffProperties(name, before.properties, after.properties, findings, "class", tps);
+  diffMethods(name, before.methods, after.methods, findings, "class", tps);
 
-  diffConstructors(name, before.constructors, after.constructors, findings);
+  diffConstructors(name, before.constructors, after.constructors, findings, tps);
 }
 
 function diffConstructors(
@@ -400,13 +458,14 @@ function diffConstructors(
   before: CallSignature[],
   after: CallSignature[],
   findings: Finding[],
+  containerParams?: readonly TypeParameter[],
 ): void {
   if (before.length === 0 && after.length === 0) return;
   // Compare the primary construct signature at parameter level.
   const b = before[0];
   const a = after[0];
   if (b && a) {
-    diffSignature(name, b, a, findings, "ctor");
+    diffSignature(name, b, a, findings, "ctor", containerParams);
   } else if (b && !a) {
     findings.push({
       level: "major",
@@ -425,6 +484,7 @@ function diffProperties(
   after: Record<string, PropertyMember>,
   findings: Finding[],
   kind: MemberOwner,
+  containerParams?: readonly TypeParameter[],
 ): void {
   for (const [propName, b] of Object.entries(before)) {
     const a = after[propName];
@@ -443,7 +503,7 @@ function diffProperties(
         level: "major",
         code: "property.typeChanged",
         path,
-        message: `Property '${propName}' type changed from '${abbreviateType(b.type)}' to '${abbreviateType(a.type)}'.`,
+        message: `Property '${propName}' type changed from '${forMessage(b.type, undefined, containerParams)}' to '${forMessage(a.type, undefined, containerParams)}'.`,
       });
     }
     if (b.optional && !a.optional) {
@@ -486,21 +546,21 @@ function diffProperties(
         level: "minor",
         code: "property.added",
         path,
-        message: `New property '${propName}: ${abbreviateType(a.type)}' was added to class '${owner}'.`,
+        message: `New property '${propName}: ${forMessage(a.type, undefined, containerParams)}' was added to class '${owner}'.`,
       });
     } else if (a.optional) {
       findings.push({
         level: "minor",
         code: "property.addedOptional",
         path,
-        message: `New optional property '${propName}?: ${abbreviateType(a.type)}' was added.`,
+        message: `New optional property '${propName}?: ${forMessage(a.type, undefined, containerParams)}' was added.`,
       });
     } else {
       findings.push({
         level: "major",
         code: "property.addedRequired",
         path,
-        message: `New required property '${propName}: ${abbreviateType(a.type)}' was added to interface '${owner}'.`,
+        message: `New required property '${propName}: ${forMessage(a.type, undefined, containerParams)}' was added to interface '${owner}'.`,
       });
     }
   }
@@ -512,6 +572,7 @@ function diffMethods(
   after: Record<string, CallSignature[]>,
   findings: Finding[],
   kind: MemberOwner,
+  containerParams?: readonly TypeParameter[],
 ): void {
   for (const [methodName, b] of Object.entries(before)) {
     const a = after[methodName];
@@ -609,13 +670,14 @@ function diffTypeAlias(
   after: TypeAliasSymbol,
   findings: Finding[],
 ): void {
-  diffTypeParameters(name, before.typeParameters, after.typeParameters, findings);
+  const tps = after.typeParameters;
+  diffTypeParameters(name, before.typeParameters, after.typeParameters, findings, tps);
   if (before.type !== after.type) {
     findings.push({
       level: "major",
       code: "typeAlias.changed",
       path: name,
-      message: `Type alias '${name}' changed from '${abbreviateType(before.type)}' to '${abbreviateType(after.type)}'.`,
+      message: `Type alias '${name}' changed from '${forMessage(before.type, undefined, tps)}' to '${forMessage(after.type, undefined, tps)}'.`,
     });
   }
 }

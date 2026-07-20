@@ -14,6 +14,7 @@ import type {
   TypeParameter,
   VariableSymbol,
 } from "./model.js";
+import { normalizeTypeParameters } from "./normalize.js";
 
 export interface ExtractOptions {
   /** Path to the entry file (`.ts` or `.d.ts`) whose exports form the surface. */
@@ -91,7 +92,9 @@ export function extractSurface(options: ExtractOptions): ApiSurface {
     }
   }
 
-  return { entryPoint: options.entryPoint, exports };
+  // Rewrite type-parameter names to positional placeholders so that a pure
+  // rename (`<T, U>` -> `<TIn, TOut>`) doesn't read as a pile of type changes.
+  return normalizeTypeParameters({ entryPoint: options.entryPoint, exports });
 }
 
 function resolveAlias(symbol: ts.Symbol, checker: ts.TypeChecker): ts.Symbol {

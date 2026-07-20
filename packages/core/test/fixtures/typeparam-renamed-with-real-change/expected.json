@@ -1,0 +1,1 @@
+{ "level": "major", "codes": ["returnType.changed"], "description": "Normalization must not mask a real change that accompanies a rename." }

@@ -1,0 +1,1 @@
+{ "level": "patch", "codes": [], "description": "Renames across both container and method type parameters are still non-breaking." }

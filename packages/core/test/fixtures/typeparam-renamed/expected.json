@@ -1,0 +1,1 @@
+{ "level": "patch", "codes": [], "description": "Type parameter names are local bindings callers cannot reference, so renaming them is not observable." }

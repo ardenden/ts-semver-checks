@@ -1,0 +1,1 @@
+{ "level": "major", "codes": ["param.typeChanged"], "description": "Swapping which type parameter each argument uses is a real change, unlike a rename." }
