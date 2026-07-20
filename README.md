@@ -44,14 +44,15 @@ growing fixture corpus that doubles as the spec.
 
 ## CLI usage
 
-Three modes:
-
 ```
 # Baseline mode — compare your local build against a published npm version.
 ts-semver-checks --baseline [version] [--package-dir <dir>] [--local-entry <path>]
 
 # Baseline mode — compare against a git tag, branch, or commit instead of npm.
 ts-semver-checks --baseline git:<ref> [--package-dir <dir>] [--baseline-entry <path>]
+
+# Workspace mode — check every publishable package in a monorepo.
+ts-semver-checks --baseline --workspace
 
 # Two-file mode — compare two entry files directly.
 ts-semver-checks <before-entry> <after-entry>
@@ -120,6 +121,35 @@ Adding a subpath is **minor** (`entryPoint.added`); removing one is **major**
 (`entryPoint.removed`). Untyped exports (like `./package.json`) and wildcard patterns
 (`./*`, which can't be enumerated statically) are skipped. Passing `--local-entry` or
 `--baseline-entry` targets a single file and opts out of this traversal.
+
+### Monorepos
+
+`--workspace` checks every publishable package in the workspace in one run, so a single
+CI step covers the whole repo:
+
+```bash
+ts-semver-checks --baseline --workspace --expect minor
+```
+
+It discovers packages from `pnpm-workspace.yaml` or the `workspaces` field in
+package.json (npm/yarn/bun), and findings are attributed to the package they came from:
+
+```
+MAJOR  New required parameter 'y: number' was added.
+       param.addedRequired @ mono-alpha-pkg → a.params[1]
+MINOR  New exported symbol 'bNew' was added.
+       export.added @ mono-beta-pkg → bNew
+```
+
+The reported bump is the highest across all packages, which is what `--expect` gates on.
+Some practical behavior:
+
+- **Private packages are skipped** — `"private": true` means it's never published, so
+  there's no semver contract to check.
+- **Unpublished packages are skipped with a note**, not treated as an error. A new package
+  in a monorepo has no baseline on npm yet, which is normal.
+- With `--baseline git:<ref>`, the repo is checked out **once** and every package is read
+  from that single worktree; an npm baseline is fetched per package.
 
 ## Use in CI (GitHub Actions)
 
@@ -251,5 +281,5 @@ push and PR, on both Ubuntu and Windows.
 - ~~Extend assignability to generic/type-parameter constraints~~ ✅ done (relax/tighten,
   add/remove constraint, defaults, add/remove type parameter).
 - ~~Multi-entry-point / `package.json` `exports` map traversal (multiple subpaths)~~ ✅ done.
-- Monorepo multi-package orchestration.
+- ~~Monorepo multi-package orchestration (`--workspace`)~~ ✅ done.
 - Recognize type-parameter renames as non-breaking (alpha-normalize signatures).

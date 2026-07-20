@@ -3,13 +3,21 @@ import * as path from "node:path";
 import {
   checkEntries,
   checkEntryPoints,
+  classify,
   renderReport,
+  sortFindings,
   type CheckResult,
   type EntryPointPair,
+  type Finding,
   type SemverLevel,
 } from "ts-semver-checks-core";
 import { ArgError, HELP_TEXT, parseArgs, type ParsedArgs } from "./args.js";
 import { resolvePackage, resolvePackageEntries, ResolveError } from "./resolve.js";
+import {
+  discoverWorkspacePackages,
+  WorkspaceError,
+  type WorkspacePackage,
+} from "./workspace.js";
 import { BaselineError, fetchBaselinePackage, type FetchedBaseline } from "./baseline.js";
 import { GitBaselineError, fetchGitBaseline, isGitBaselineSpec, parseGitRef } from "./gitBaseline.js";
 
@@ -47,10 +55,163 @@ export function run(argv: readonly string[], io: RunIO): number {
     return 0;
   }
 
+  if (args.workspace) {
+    if (args.baseline === undefined) {
+      io.stderr("--workspace requires --baseline (there is nothing to compare against).\n");
+      return 2;
+    }
+    return runWorkspace(args, io);
+  }
   if (args.baseline !== undefined) {
     return runBaseline(args, io);
   }
   return runDirect(args, io);
+}
+
+// ---------------------------------------------------------------------------
+// Workspace (monorepo) mode
+// ---------------------------------------------------------------------------
+
+function runWorkspace(args: ParsedArgs, io: RunIO): number {
+  const spec = args.baseline ?? "latest";
+  const rootDir = path.resolve(args.packageDir ?? process.cwd());
+  const isGit = isGitBaselineSpec(spec);
+
+  let members;
+  try {
+    members = discoverWorkspacePackages(rootDir);
+  } catch (err) {
+    if (err instanceof WorkspaceError) {
+      io.stderr(`${err.message}\n`);
+      return 3;
+    }
+    throw err;
+  }
+
+  // Private packages are never published, so they have no semver contract.
+  const publishable = members.filter((m) => !m.private);
+  const skippedPrivate = members.length - publishable.length;
+
+  if (publishable.length === 0) {
+    io.stderr(
+      `No publishable packages found in the workspace at ${rootDir}` +
+        (skippedPrivate > 0 ? ` (${skippedPrivate} private package(s) skipped).` : ".") +
+        "\n",
+    );
+    return 3;
+  }
+
+  io.stderr(
+    `Checking ${publishable.length} workspace package(s) against ${isGit ? spec : `npm ${spec}`}` +
+      (skippedPrivate > 0 ? `, skipping ${skippedPrivate} private` : "") +
+      "…\n",
+  );
+
+  // For a git baseline the whole repo is checked out once and every package is
+  // read from that single worktree; an npm baseline is fetched per package.
+  let sharedGitBaseline: FetchedBaseline | undefined;
+  if (isGit) {
+    try {
+      sharedGitBaseline = fetchGitBaseline(parseGitRef(spec), rootDir, (m) => io.stderr(`${m}\n`));
+    } catch (err) {
+      if (err instanceof GitBaselineError) {
+        io.stderr(`${err.message}\n`);
+        return 3;
+      }
+      throw err;
+    }
+  }
+
+  const all: Finding[] = [];
+  let checked = 0;
+
+  try {
+    for (const member of publishable) {
+      const outcome = checkWorkspaceMember(member, rootDir, spec, isGit, sharedGitBaseline, io);
+      if (outcome === "skipped") continue;
+      checked++;
+      all.push(...outcome);
+    }
+  } finally {
+    sharedGitBaseline?.cleanup();
+  }
+
+  if (checked === 0) {
+    io.stderr("No workspace package could be compared against a baseline.\n");
+    return 3;
+  }
+
+  const findings = sortFindings(all);
+  return report({ level: classify(findings), findings }, args, io);
+}
+
+/**
+ * Check a single workspace member, returning its findings tagged with the
+ * package name, or "skipped" when it has no comparable baseline (e.g. a package
+ * that isn't published yet, or doesn't exist at the baseline git ref).
+ */
+function checkWorkspaceMember(
+  member: WorkspacePackage,
+  rootDir: string,
+  spec: string,
+  isGit: boolean,
+  sharedGitBaseline: FetchedBaseline | undefined,
+  io: RunIO,
+): Finding[] | "skipped" {
+  let localEntries: Map<string, string>;
+  try {
+    localEntries = resolvePackageEntries(member.dir).entries;
+  } catch (err) {
+    if (err instanceof ResolveError) {
+      io.stderr(`  ${member.name}: skipped — ${err.message}\n`);
+      return "skipped";
+    }
+    throw err;
+  }
+
+  let baselineDir: string;
+  let cleanup: (() => void) | undefined;
+
+  if (isGit) {
+    // Same relative location inside the single shared worktree.
+    baselineDir = path.join(sharedGitBaseline!.dir, path.relative(rootDir, member.dir));
+    if (!fs.existsSync(baselineDir)) {
+      io.stderr(`  ${member.name}: skipped — did not exist at ${spec}.\n`);
+      return "skipped";
+    }
+  } else {
+    try {
+      const fetched = fetchBaselinePackage(member.name, spec, () => {});
+      baselineDir = fetched.dir;
+      cleanup = fetched.cleanup;
+    } catch (err) {
+      if (err instanceof BaselineError) {
+        // Most commonly: not published yet. That's expected in a monorepo.
+        io.stderr(`  ${member.name}: skipped — no published ${spec} version found.\n`);
+        return "skipped";
+      }
+      throw err;
+    }
+  }
+
+  try {
+    let baselineEntries: Map<string, string>;
+    try {
+      baselineEntries = resolvePackageEntries(baselineDir).entries;
+    } catch (err) {
+      if (err instanceof ResolveError) {
+        io.stderr(`  ${member.name}: skipped — baseline has no type entry (${err.message}).\n`);
+        return "skipped";
+      }
+      throw err;
+    }
+
+    const pairs = buildEntryPointPairs(baselineEntries, localEntries);
+    const result = checkEntryPoints(pairs);
+    return result.findings.map((f) => ({ ...f, packageName: member.name }));
+  } finally {
+    cleanup?.();
+  }
 }
 
 // ---------------------------------------------------------------------------

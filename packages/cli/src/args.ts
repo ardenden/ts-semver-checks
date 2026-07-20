@@ -11,6 +11,8 @@ export interface ParsedArgs {
   localEntry?: string;
   /** Override the resolved baseline type entry, relative to the fetched/checked-out package (baseline mode). */
   baselineEntry?: string;
+  /** Check every package in the monorepo workspace rather than a single package. */
+  workspace: boolean;
   json: boolean;
   color: boolean;
   expect?: SemverLevel;
@@ -32,6 +34,7 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     color: process.stdout.isTTY === true,
     help: false,
     version: false,
+    workspace: false,
   };
   const positionals: string[] = [];
 
@@ -48,6 +51,9 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
         break;
       case "--json":
         result.json = true;
+        break;
+      case "--workspace":
+        result.workspace = true;
         break;
       case "--color":
         result.color = true;
@@ -137,6 +143,9 @@ BASELINE MODE
                            of npm. Checks out <ref> into a temp worktree.
                            Requires running inside a git repository.
   --package-dir <dir>      Local package directory to check (default: cwd).
+  --workspace              Check every publishable package in the monorepo
+                           workspace (pnpm-workspace.yaml or package.json
+                           "workspaces"). Private packages are skipped.
   --local-entry <path>     Override the resolved local type entry.
   --baseline-entry <path>  Override the resolved baseline type entry, relative
                            to the fetched/checked-out package.
@@ -165,4 +174,5 @@ EXAMPLES
   ts-semver-checks --baseline 1.4.0 --package-dir packages/core
   ts-semver-checks --baseline git:v1.4.0 --expect minor
   ts-semver-checks --baseline git:main
+  ts-semver-checks --baseline --workspace --expect minor
 `;

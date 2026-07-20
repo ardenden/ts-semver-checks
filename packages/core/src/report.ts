@@ -40,10 +40,11 @@ export function renderReport(result: CheckResult, options: RenderOptions = {}): 
   for (const f of result.findings) {
     const badge = paint(f.level, LEVEL_LABEL[f.level].padEnd(5));
     lines.push(`${badge}  ${f.message}`);
-    // Qualify the location with the exports subpath when there is one, so a
-    // finding in "./utils" isn't mistaken for one in the root entry point.
-    const location = f.entryPoint ? `${f.entryPoint} → ${f.path}` : f.path;
-    lines.push(`       ${paint("dim", `${f.code} @ ${location}`)}`);
+    // Qualify the location with the package and exports subpath when there is
+    // one, so a finding in "./utils" of one workspace package isn't mistaken
+    // for one in another package's root entry point.
+    const parts = [f.packageName, f.entryPoint, f.path].filter(Boolean);
+    lines.push(`       ${paint("dim", `${f.code} @ ${parts.join(" → ")}`)}`);
   }
 
   lines.push("");

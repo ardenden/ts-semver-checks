@@ -113,6 +113,17 @@ function renderSignature(sig: CallSignature): string {
   return `${tp}(${params}) => ${sig.returnType}`;
 }
 
+/**
+ * Shorten a rendered type for display in a finding message. Types can be
+ * arbitrarily large — a string-literal type of a help text, or a wide union —
+ * and printing two of them in full makes the report unreadable. The full types
+ * remain available in the surface model; this only affects the message.
+ */
+function abbreviateType(type: string, max = 80): string {
+  const collapsed = type.replace(/\s+/g, " ").trim();
+  return collapsed.length <= max ? collapsed : `${collapsed.slice(0, max - 1)}…`;
+}
+
 function renderTypeParam(tp: TypeParameter): string {
   let s = tp.name;
   if (tp.constraint) s += ` extends ${tp.constraint}`;
@@ -289,14 +300,14 @@ function diffSignature(
           level: "minor",
           code: "param.addedOptional",
           path: paramPath,
-          message: `New optional parameter '${a.name}: ${a.type}' was added.`,
+          message: `New optional parameter '${a.name}: ${abbreviateType(a.type)}' was added.`,
         });
       } else {
         findings.push({
           level: "major",
           code: "param.addedRequired",
           path: paramPath,
-          message: `New required parameter '${a.name}: ${a.type}' was added.`,
+          message: `New required parameter '${a.name}: ${abbreviateType(a.type)}' was added.`,
         });
       }
       continue;
@@ -309,7 +320,7 @@ function diffSignature(
       level: "major",
       code: "returnType.changed",
       path: `${path}.returnType`,
-      message: `Return type changed from '${before.returnType}' to '${after.returnType}'.`,
+      message: `Return type changed from '${abbreviateType(before.returnType)}' to '${abbreviateType(after.returnType)}'.`,
     });
   }
 }
@@ -320,7 +331,7 @@ function diffParameter(path: string, before: Parameter, after: Parameter, findin
       level: "major",
       code: "param.typeChanged",
       path,
-      message: `Parameter '${before.name}' type changed from '${before.type}' to '${after.type}'.`,
+      message: `Parameter '${before.name}' type changed from '${abbreviateType(before.type)}' to '${abbreviateType(after.type)}'.`,
     });
   }
   if (before.optional && !after.optional) {
@@ -432,7 +443,7 @@ function diffProperties(
         level: "major",
         code: "property.typeChanged",
         path,
-        message: `Property '${propName}' type changed from '${b.type}' to '${a.type}'.`,
+        message: `Property '${propName}' type changed from '${abbreviateType(b.type)}' to '${abbreviateType(a.type)}'.`,
       });
     }
     if (b.optional && !a.optional) {
@@ -475,21 +486,21 @@ function diffProperties(
         level: "minor",
         code: "property.added",
         path,
-        message: `New property '${propName}: ${a.type}' was added to class '${owner}'.`,
+        message: `New property '${propName}: ${abbreviateType(a.type)}' was added to class '${owner}'.`,
       });
     } else if (a.optional) {
       findings.push({
         level: "minor",
         code: "property.addedOptional",
         path,
-        message: `New optional property '${propName}?: ${a.type}' was added.`,
+        message: `New optional property '${propName}?: ${abbreviateType(a.type)}' was added.`,
       });
     } else {
       findings.push({
         level: "major",
         code: "property.addedRequired",
         path,
-        message: `New required property '${propName}: ${a.type}' was added to interface '${owner}'.`,
+        message: `New required property '${propName}: ${abbreviateType(a.type)}' was added to interface '${owner}'.`,
       });
     }
   }
@@ -604,7 +615,7 @@ function diffTypeAlias(
       level: "major",
       code: "typeAlias.changed",
       path: name,
-      message: `Type alias '${name}' changed from '${before.type}' to '${after.type}'.`,
+      message: `Type alias '${name}' changed from '${abbreviateType(before.type)}' to '${abbreviateType(after.type)}'.`,
     });
   }
 }
@@ -620,7 +631,7 @@ function diffVariable(
       level: "major",
       code: "variable.typeChanged",
       path: name,
-      message: `Exported value '${name}' type changed from '${before.type}' to '${after.type}'.`,
+      message: `Exported value '${name}' type changed from '${abbreviateType(before.type)}' to '${abbreviateType(after.type)}'.`,
     });
   }
 }

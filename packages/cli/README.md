@@ -16,6 +16,7 @@ usage, modes, and the rule set.
 ```
 ts-semver-checks --baseline [version]          # compare local build vs npm
 ts-semver-checks --baseline git:<ref>          # compare local build vs a git tag/branch/commit
+ts-semver-checks --baseline --workspace        # check every package in a monorepo
 ts-semver-checks <before-entry> <after-entry>  # compare two entry files
 ```
 

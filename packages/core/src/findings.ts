@@ -16,6 +16,11 @@ export interface Finding {
    * Omitted for the root entry point and for single-entry comparisons.
    */
   entryPoint?: string;
+  /**
+   * The workspace package this finding came from, e.g. `@scope/utils`.
+   * Only set when checking a monorepo workspace.
+   */
+  packageName?: string;
   /** Human-readable one-line explanation. */
   message: string;
 }
@@ -32,13 +37,15 @@ export function classify(findings: readonly Finding[]): SemverLevel {
 }
 
 /**
- * Sort findings most-severe first, then grouped by entry point (root first),
- * then by path for stable output.
+ * Sort findings most-severe first, then grouped by package and entry point
+ * (root first), then by path for stable output.
  */
 export function sortFindings(findings: Finding[]): Finding[] {
   return [...findings].sort((a, b) => {
     const byLevel = ORDER[b.level] - ORDER[a.level];
     if (byLevel !== 0) return byLevel;
+    const byPackage = (a.packageName ?? "").localeCompare(b.packageName ?? "");
+    if (byPackage !== 0) return byPackage;
     // Root/unlabelled entry point sorts before named subpaths.
     const byEntry = (a.entryPoint ?? "").localeCompare(b.entryPoint ?? "");
     if (byEntry !== 0) return byEntry;

@@ -6,6 +6,8 @@ export { resolvePackage, resolvePackageEntries, ResolveError } from "./resolve.j
 export type { ResolvedPackage, ResolvedPackageEntries } from "./resolve.js";
 export { fetchBaselinePackage, BaselineError } from "./baseline.js";
 export type { FetchedBaseline } from "./baseline.js";
+export { discoverWorkspacePackages, isWorkspaceRoot, WorkspaceError } from "./workspace.js";
+export type { WorkspacePackage } from "./workspace.js";
 export {
   fetchGitBaseline,
   GitBaselineError,
